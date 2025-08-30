@@ -28,7 +28,7 @@
       <button class="tab" data-page="stats">Estadísticas</button>
       <button class="tab" data-page="friends">Amigos</button>  <!-- ← NUEVO -->
       <button class="tab" data-page="profile">Perfil</button>
-      <button class="tab" data-page="community">Comunidad</button>
+      <button class="tab" data-page="myOwnPosts">Mis Posts</button>
 
     </div>
 
@@ -116,7 +116,7 @@
 <!-- INICIO (home) -->
 <!-- version 2 del home -->
  <!-- HOME -->
-<section id="page-home" class="page" hidden>
+<!-- <section id="page-home" class="page" hidden>
   <div class="grid">
     <div class="card">
       <h3>Recomendados para ti</h3>
@@ -135,8 +135,80 @@
       <div id="rankGrid" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px"></div>
     </div>
   </div>
+</section> -->
+
+<!-- version 3 home -->
+<!-- INICIO -->
+<section id="page-home" class="page" hidden>
+  <div class="home-layout container">
+
+    <!-- Columna izquierda (carrusel + feed) -->
+    <div class="home-main">
+      <!-- Recomendaciones como carrusel -->
+      <div class="card">
+        <div class="card-head">
+          <h2>Recomendados para ti</h2>
+          <div class="hint">Perfiles públicos basados en amigos de amigos, hábitos similares y actividad.</div>
+        </div>
+
+        <div class="h-carousel" id="recCarousel" aria-label="Carrusel de recomendaciones">
+          <!-- tarjetas de recomendación se inyectan por JS -->
+        </div>
+      </div>
+
+      <!-- Feed + botón flotante para publicar -->
+      <div class="card" style="position:relative">
+        <div class="card-head">
+          <h2>Feed</h2>
+        </div>
+        <div id="feedList" class="feed-list">
+          <!-- posts por JS -->
+        </div>
+      </div>
+
+      <!-- FAB para nueva publicación -->
+      <button id="fabNewPost" class="fab" title="Nueva publicación">+</button>
+    </div>
+
+    <!-- Columna derecha (ranking fijo) -->
+    <aside class="home-aside">
+      <div class="card sticky">
+        <div class="card-head" style="display:flex;justify-content:space-between;align-items:center">
+          <h2>Ranking</h2>
+          <span class="chip">Últimos 7 días</span>
+        </div>
+        <div id="rankList" class="rank-list">
+          <!-- ranking por JS -->
+        </div>
+      </div>
+    </aside>
+  </div>
 </section>
-<section id="page-community" class="page" hidden>
+
+
+<!-- Modal: crear publicación -->
+<div id="postModal" class="modal" aria-hidden="true">
+  <div class="sheet">
+    <h3>Nueva publicación</h3>
+    <div class="field">
+      <label>Contenido</label>
+      <textarea id="post-content" rows="4" placeholder="¿Qué quieres compartir hoy?"></textarea>
+    </div>
+    <div class="field">
+      <label>Visibilidad</label>
+      <select id="post-visibility">
+        <option value="public">Pública</option>
+        <option value="friends">Solo amigos</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="post-cancel" class="btn">Cancelar</button>
+      <button id="post-submit" class="btn primary">Publicar</button>
+    </div>
+  </div>
+</div>
+
+<section id="page-ownPosts" class="page" hidden>
   <div class="grid">
     <div class="card">
       <h3>Crear publicación</h3>
@@ -156,7 +228,7 @@
 
     <div class="card">
       <h3>Feed</h3>
-      <div id="feedList" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px"></div>
+      <div id="myFeedList" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px"></div>
       <div style="display:flex; justify-content:center; margin-top:10px">
         <button id="feed-more" class="btn">Cargar más</button>
       </div>

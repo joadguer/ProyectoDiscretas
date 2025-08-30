@@ -129,7 +129,7 @@ $('#post-create')?.addEventListener('click', async ()=>{
 
 
 // Feed
-let feedPage = 1;
+// let feedPage = 1;
 async function loadFeed(clear=false){
   try{
     const res = await api(`/posts/feed?user_id=${state.user.id}&page=${feedPage}&page_size=8`);
@@ -224,26 +224,406 @@ $('.auth-tabs')?.addEventListener('click', (e)=>{
 setAuthView('login');
 
 // render home v2 con recomendaciones y ranking
+// async function renderHome(){
+//   try{
+//     const [recs, rankWindow] = await Promise.all([
+//       fetchSuggested(12, 30),
+//       Promise.resolve($('#rankWindow')?.value || '7')
+//     ]);
+//     renderRecs(recs.items || []);
+//     const rk = await fetchRank(Number(rankWindow), 1, 12);
+//     renderRank(rk);
+//   }catch(e){
+//     showToast?.(e.message,'error','No se pudo cargar Inicio');
+//   }
+// }
+
+
+// home version 3 que incluye recomendaciones, ranking y feedPage
 async function renderHome(){
-  try{
-    const [recs, rankWindow] = await Promise.all([
-      fetchSuggested(12, 30),
-      Promise.resolve($('#rankWindow')?.value || '7')
-    ]);
-    renderRecs(recs.items || []);
-    const rk = await fetchRank(Number(rankWindow), 1, 12);
-    renderRank(rk);
-  }catch(e){
-    showToast?.(e.message,'error','No se pudo cargar Inicio');
+  if(!state.user) return;
+  await Promise.all([renderRecommendations(), renderRanking(), renderFeed()]);
+}
+
+// revisar si lo necesito ahora que tengo otro render para version 3
+// $('#rankWindow')?.addEventListener('change', async ()=>{
+//   try{
+//     const rk = await fetchRank(Number($('#rankWindow').value), 1, 12);
+//     renderRank(rk);
+//   }catch(e){ showToast?.(e.message,'error'); }
+// });
+
+
+// version nueva Recomendaciones → /friends/suggested?user_id=&limit=&window=
+async function renderRecommendations() {
+  const wrap = $('#recCarousel');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="muted">Cargando recomendaciones...</div>';
+
+  try {
+    const data = await api(`/friends/suggested?user_id=${state.user.id}&limit=12&window=30`);
+
+    // 1) Detecta el array correcto (users, items o el primer array del objeto)
+    let raw = [];
+    if (Array.isArray(data?.users)) raw = data.users;
+    else if (Array.isArray(data?.items)) raw = data.items;
+    else if (Array.isArray(data)) raw = data;               // por si devuelve el array directo
+    else {
+      const firstArray = Object.values(data || {}).find(v => Array.isArray(v));
+      raw = Array.isArray(firstArray) ? firstArray : [];
+    }
+
+    // 2) Normaliza llaves para que tu UI sea consistente
+    const normalized = raw.map(u => {
+      const id = u.id ?? u.user_id ?? u.uid ?? u.candidate ?? null;
+      const username = u.username ?? u.user_name ?? u.handle ?? '';
+      const full_name = u.full_name ?? u.name ?? u.display_name ?? '';
+      const bio = u.bio ?? u.profile?.bio ?? '';
+      return id == null ? null : { id, username, full_name, bio };
+    }).filter(Boolean);
+
+    // 3) Dedupe por id (si algún id viene como string y otro como número, unifícalo)
+    const seen = new Set();
+    const users = normalized.filter(u => {
+      const key = String(u.id);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // 4) Render
+    wrap.innerHTML = '';
+    if (users.length === 0) {
+      wrap.innerHTML = `<div class="muted">No hay sugerencias ahora.</div>`;
+      // DEBUG opcional
+      console.log('[recs] payload:', data);
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    users.forEach(u => {
+      const card = document.createElement('div');
+      card.className = 'rec-card';
+      card.innerHTML = `
+        <div class="rec-top">
+          <div class="rec-ava"></div>
+          <div>
+            <div class="rec-user">@${u.username}</div>
+            <div class="muted">${u.full_name || ''}</div>
+          </div>
+        </div>
+        <div class="rec-bio">${u.bio ? escapeHtml(u.bio) : '—'}</div>
+        <div class="rec-actions">
+          <button class="btn" data-act="visit" data-username="${u.username}">Ver</button>
+          <button class="btn primary" data-act="add" data-id="${u.id}">Agregar</button>
+        </div>
+      `;
+      frag.appendChild(card);
+    });
+    wrap.appendChild(frag);
+
+  } catch (e) {
+    wrap.innerHTML = `<div class="muted">No hay sugerencias ahora.</div>`;
+    console.error('[recs] error:', e);
   }
 }
-$('#rankWindow')?.addEventListener('change', async ()=>{
-  try{
-    const rk = await fetchRank(Number($('#rankWindow').value), 1, 12);
-    renderRank(rk);
-  }catch(e){ showToast?.(e.message,'error'); }
+
+
+
+
+
+// Ranking → /public/rank?window=7&page=1&page_size=12
+let rankLoading = false;
+let rankAbortCtrl = null;
+
+async function renderRanking() {
+  const list = $('#rankList'); if (!list) return;
+  if (rankLoading) { try { rankAbortCtrl?.abort(); } catch {} }
+  rankLoading = true;
+  rankAbortCtrl = new AbortController();
+
+  list.innerHTML = '<div class="muted">Cargando ranking...</div>';
+
+  try {
+    const data = await api(`/public/rank?window=7&page=1&page_size=10`, { signal: rankAbortCtrl.signal });
+    const raw = Array.isArray(data?.items) ? data.items
+               : Array.isArray(data)       ? data
+               : [];
+
+    // --- DEDUPE por user-id/username ---------------------------------------
+    const seen = new Set();
+    const unique = [];
+    for (const r of raw) {
+      const key = String(r.user_id ?? r.id ?? r.uid ?? r.username); // elige la mejor llave disponible
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(r);
+    }
+
+    // Si hay menos de 10, NO rellenes con repetidos. Simplemente muestra los que hay.
+    const top = unique.slice(0, 10);
+
+    list.innerHTML = '';
+    if (top.length === 0) {
+      list.innerHTML = `<div class="muted">No disponible.</div>`;
+      return;
+    }
+
+    top.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.className = 'rank-item';
+      row.innerHTML = `
+        <div class="badge">${i + 1}</div>
+        <div class="post-ava"></div>
+        <div style="flex:1">
+          <div class="post-user">@${r.username}</div>
+          <div class="muted">${r.done_days} días cumplidos</div>
+        </div>
+      `;
+      list.appendChild(row);
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    list.innerHTML = `<div class="muted">No disponible.</div>`;
+    console.error('[rank] error:', e);
+  } finally {
+    rankLoading = false;
+  }
+}
+
+
+
+
+// ===== FEED v2 (likes + comentarios) =====
+// ===== FEED v2 (Home) =====
+let feedPage = 1;
+let feedLoading = false;
+const renderedIds = new Set();
+
+function formatTs(ts){ try{ return new Date(ts).toLocaleString(); }catch{ return ts } }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
+
+async function renderFeed(loadMore = false) {
+  const list = $('#feedList'); 
+  if (!list || feedLoading) return;
+  feedLoading = true;
+
+  if (!loadMore) {
+    feedPage = 1;
+    list.innerHTML = '';
+    renderedIds.clear();
+  }
+
+  // quita “Cargar más” previo
+  const oldMore = $('#feedMoreBtn');
+  if (oldMore) oldMore.parentElement?.remove();
+
+  try {
+    const data = await api(`/posts/feed?user_id=${state.user.id}&page=${feedPage}&page_size=8`);
+    const items = Array.isArray(data?.items) ? data.items : [];
+
+    if (items.length === 0 && feedPage === 1) {
+      list.innerHTML = `<div class="muted">Aún no hay publicaciones.</div>`;
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+
+    items.forEach(p => {
+      if (renderedIds.has(p.id)) return;
+      renderedIds.add(p.id);
+
+      const liked = !!p.liked_by_me;                   // si tu backend aún no lo envía, queda en false
+      const likeCount = Number(p.likes ?? 0);
+      const cmtCount  = Number(p.comments ?? 0);
+
+      const card = document.createElement('article');
+      card.className = 'post';
+      card.dataset.postId = p.id;
+      card.innerHTML = `
+        <div class="post-head">
+          <div class="post-ava"></div>
+          <div>
+            <div class="post-user">@${escapeHtml(p.username || p.author || '')}</div>
+            <div class="muted">${formatTs(p.created_at)}</div>
+          </div>
+        </div>
+
+        <div class="post-body" style="margin-top:8px; white-space:pre-wrap;">
+          ${escapeHtml(p.content)}
+        </div>
+
+        <div class="post-actions" style="display:flex; gap:10px; align-items:center; margin-top:8px">
+          <button class="btn btn-like ${liked ? 'is-liked' : ''}" data-like="${p.id}">
+            ❤️ <span data-like-count>${likeCount}</span>
+          </button>
+          <button class="btn ghost btn-cmt" data-cmt="${p.id}">
+            💬 <span data-cmt-count>${cmtCount}</span>
+          </button>
+        </div>
+
+        <div class="cbox" id="cbox-${p.id}" hidden style="margin-top:8px">
+          <div style="display:flex; gap:6px">
+            <input class="input" id="cinput-${p.id}" maxlength="600" placeholder="Escribe un comentario..." />
+            <button class="btn" data-sendc="${p.id}">Enviar</button>
+          </div>
+          <div class="clist" id="clist-${p.id}" style="margin-top:6px"></div>
+        </div>
+      `;
+      frag.appendChild(card);
+    });
+
+    list.appendChild(frag);
+
+    if (items.length === 8) {
+      const moreWrap = document.createElement('div');
+      moreWrap.style = 'display:flex;justify-content:center;margin-top:8px';
+      moreWrap.innerHTML = `<button class="btn" id="feedMoreBtn">Cargar más</button>`;
+      list.appendChild(moreWrap);
+      $('#feedMoreBtn').onclick = () => {
+        if (feedLoading) return;
+        moreWrap.remove();
+        feedPage++;
+        renderFeed(true);
+      };
+    }
+  } catch (e) {
+    showToast?.(e.message, 'error');
+  } finally {
+    feedLoading = false;
+  }
+}
+
+// este es el listener que me sirve para like / abrir-comentarios / enviar-comentario
+// Delegación en el contenedor del feed
+$('#feedList')?.addEventListener('click', async (e) => {
+  const likeBtn = e.target.closest('[data-like]');
+  const cmtBtn  = e.target.closest('[data-cmt]');
+  const sendBtn = e.target.closest('[data-sendc]');
+  if (!likeBtn && !cmtBtn && !sendBtn) return;
+
+  // LIKE
+  if (likeBtn) {
+    const postId = Number(likeBtn.dataset.like);
+    await onToggleLike(postId, likeBtn);
+    return;
+  }
+
+  // ABRIR/OCULTAR COMENTARIOS
+  if (cmtBtn) {
+    const postId = Number(cmtBtn.dataset.cmt);
+    const box = $(`#cbox-${postId}`);
+    box.hidden = !box.hidden;
+    if (!box.hidden) {
+      await loadComments(postId);
+    }
+    return;
+  }
+
+  // ENVIAR COMENTARIO
+  if (sendBtn) {
+    const postId = Number(sendBtn.dataset.sendc);
+    const input = $(`#cinput-${postId}`);
+    const text = (input.value || '').trim();
+    if (!text) return;
+
+    try {
+      await api(`/posts/${postId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ user_id: state.user.id, content: text })
+      });
+      input.value = '';
+      await loadComments(postId);
+
+      // ++ contador visible
+      const counter = sendBtn
+        .closest('.post')
+        .querySelector('[data-cmt-count]');
+      counter.textContent = String(Number(counter.textContent || 0) + 1);
+    } catch (err) {
+      showToast?.(err.message, 'error');
+    }
+  }
 });
 
+
+async function onToggleLike(postId, btnEl) {
+  // UI optimista
+  const countEl = btnEl.querySelector('[data-like-count]');
+  const wasLiked = btnEl.classList.contains('is-liked');
+  const prev = Number(countEl.textContent || 0);
+  btnEl.classList.toggle('is-liked');
+  countEl.textContent = String(prev + (wasLiked ? -1 : 1));
+
+  try {
+    const data = await api(`/posts/${postId}/like?user_id=${state.user.id}`, { method: 'POST' });
+    // corrige con el valor real del backend por si hubo carrera
+    btnEl.classList.toggle('is-liked', data.status === 'liked');
+    countEl.textContent = String(data.like_count ?? 0);
+  } catch (e) {
+    // revierte en caso de error
+    btnEl.classList.toggle('is-liked', wasLiked);
+    countEl.textContent = String(prev);
+    showToast?.(e.message, 'error');
+  }
+}
+
+async function loadComments(postId, page=1, page_size=50) {
+  try {
+    // tu endpoint devuelve LISTA (no {items}), así que úsalo directo
+    const comments = await api(`/posts/${postId}/comments?page=${page}&page_size=${page_size}`);
+    const listEl = $(`#clist-${postId}`);
+    if (!listEl) return;
+    listEl.innerHTML = comments.map(c => `
+      <div class="comment">
+        <b>@${escapeHtml(c.username)}</b>
+        <span class="muted" style="margin-left:6px">${formatTs(c.created_at)}</span>
+        <div>${escapeHtml(c.content)}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    showToast?.(e.message,'error');
+  }
+}
+
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
+
+/********* Modal nueva publicación **********/
+const postModal = $('#postModal');
+const openPostModal = ()=>{ postModal.classList.add('open'); postModal.setAttribute('aria-hidden','false'); $('#post-content').value=''; };
+const closePostModal = ()=>{ postModal.classList.remove('open'); postModal.setAttribute('aria-hidden','true'); };
+
+$('#fabNewPost')?.addEventListener('click', openPostModal);
+$('#post-cancel')?.addEventListener('click', closePostModal);
+postModal?.addEventListener('click', (e)=>{ if(e.target.id==='postModal') closePostModal(); });
+
+$('#post-submit')?.addEventListener('click', async ()=>{
+  const content = $('#post-content').value.trim();
+  const visibility = $('#post-visibility').value;
+  if(!content){ showToast('Escribe algo','error'); return; }
+  try{
+    await api('/posts', {method:'POST', body: JSON.stringify({
+      author_id: state.user.id, content, visibility
+    })});
+    closePostModal();
+    showToast('Publicado','success');
+    renderFeed(); // refresca
+  }catch(e){ showToast(e.message,'error'); }
+});
+
+/********* Integración con tabs **********/
+function showHomeIfNeeded(page){
+  if(page==='home'){ renderHome(); }
+}
+// Hookea tu navegación existente:
+const _goto = goto;
+goto = function(page){
+  _goto(page);
+  showHomeIfNeeded(page);
+};
+
+// fin de version 3
 
 // visibilidad del perfil
 function hydrateVisibilityForm(){
@@ -356,37 +736,38 @@ async function fetchSuggested(limit=12, window=30){
   return api(`/friends/suggested?user_id=${state.user.id}&limit=${limit}&window=${window}`);
 }
 
-function renderRecs(items){
-  const grid = $('#recGrid'); if(!grid) return;
-  grid.innerHTML = '';
-  if(!items || items.length===0){
-    grid.innerHTML = '<div class="muted">No hay recomendaciones por ahora.</div>';
-    return;
-  }
-  items.forEach(u=>{
-    const card = document.createElement('div');
-    card.className = 'user-card';
-    card.innerHTML = `
-      <div class="user-avatar"></div>
-      <div class="user-meta">
-        <div class="user-name">@${u.username}</div>
-        <div class="user-bio">${(u.bio||'').slice(0,120)}</div>
-      </div>
-      <div class="user-actions">
-        <button class="btn" data-id="${u.id}">Agregar</button>
-      </div>
-    `;
-    card.querySelector('button').onclick = async (ev)=>{
-      const targetId = Number(ev.currentTarget.dataset.id);
-      try{
-        await api('/friends/add', {method:'POST', body: JSON.stringify({user_id: state.user.id, target_id: targetId})});
-        showToast?.('Amigo agregado','success');
-        renderHome(); // refresca recomendaciones
-      }catch(e){ showToast?.(e.message,'error'); }
-    };
-    grid.appendChild(card);
-  });
-}
+// ya no esta en uso
+// function renderRecs(items){
+//   const grid = $('#recGrid'); if(!grid) return;
+//   grid.innerHTML = '';
+//   if(!items || items.length===0){
+//     grid.innerHTML = '<div class="muted">No hay recomendaciones por ahora.</div>';
+//     return;
+//   }
+//   items.forEach(u=>{
+//     const card = document.createElement('div');
+//     card.className = 'user-card';
+//     card.innerHTML = `
+//       <div class="user-avatar"></div>
+//       <div class="user-meta">
+//         <div class="user-name">@${u.username}</div>
+//         <div class="user-bio">${(u.bio||'').slice(0,120)}</div>
+//       </div>
+//       <div class="user-actions">
+//         <button class="btn" data-id="${u.id}">Agregar</button>
+//       </div>
+//     `;
+//     card.querySelector('button').onclick = async (ev)=>{
+//       const targetId = Number(ev.currentTarget.dataset.id);
+//       try{
+//         await api('/friends/add', {method:'POST', body: JSON.stringify({user_id: state.user.id, target_id: targetId})});
+//         showToast?.('Amigo agregado','success');
+//         renderHome(); // refresca recomendaciones
+//       }catch(e){ showToast?.(e.message,'error'); }
+//     };
+//     grid.appendChild(card);
+//   });
+// }
 
 // friends
 async function getFriends(){
@@ -518,27 +899,7 @@ async function fetchRank(window=7, page=1, page_size=10){
   return api(`/public/rank?window=${window}&page=${page}&page_size=${page_size}`);
 }
 
-function renderRank(resp){
-  const grid = $('#rankGrid'); if(!grid) return;
-  grid.innerHTML = '';
-  const items = resp?.items || [];
-  if(items.length===0){
-    grid.innerHTML = '<div class="muted">Sin datos para esta ventana.</div>'; return;
-  }
-  items.forEach((r,idx)=>{
-    const row = document.createElement('div');
-    row.className = 'rank-row';
-    row.innerHTML = `
-      <div class="rank-pos">${idx+1}</div>
-      <div class="user-avatar"></div>
-      <div style="display:flex; flex-direction:column">
-        <div class="user-name">@${r.username}</div>
-        <div class="muted">${r.done_days} días cumplidos</div>
-      </div>
-    `;
-    grid.appendChild(row);
-  });
-}
+
 
 
 // Auth

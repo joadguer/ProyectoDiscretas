@@ -591,3 +591,111 @@ body {
   padding:10px 12px; border:1px solid var(--border); background:var(--bg-soft);
   color:var(--text); border-radius:12px;
 }
+
+
+
+
+/* refactorizaciones para el home version 3 en la que hay un carrsuel de recomendaciones, el ranking y el feed */
+/* ====== Home layout ====== */
+.home-layout{
+  display:grid;
+  grid-template-columns: 1fr 340px; /* izq (carrusel+feed) | der (ranking) */
+  align-items:start;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.home-main{ display:flex; flex-direction:column; gap:18px; }
+.home-aside{ width:100%; }
+
+.sticky{ position:sticky; top:80px; } /* ranking fijo al hacer scroll */
+
+/* Tarjetas / encabezados */
+.card-head h2{ margin:0; }
+.card-head .chip{
+  font-size:.85rem; padding:6px 10px; border-radius:999px;
+  background: color-mix(in oklab, var(--bg-soft), var(--primary) 12%);
+  border:1px solid var(--border);
+}
+
+/* ====== Carrusel horizontal ====== */
+.h-carousel{
+  margin-top:12px;
+  display:grid;
+  grid-auto-flow:column;
+  grid-auto-columns: minmax(220px, 300px);
+  gap:12px;
+  overflow-x:auto;
+  scroll-snap-type:x mandatory;
+  padding-bottom:6px;
+}
+.h-carousel::-webkit-scrollbar{ height:10px }
+.h-carousel > .rec-card{
+  scroll-snap-align:start;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:12px;
+  box-shadow: var(--shadow);
+  display:flex; flex-direction:column; gap:8px;
+}
+.rec-top{ display:flex; align-items:center; gap:10px; }
+.rec-ava{ width:42px; height:42px; border-radius:12px; background:linear-gradient(135deg,var(--primary),var(--highlight)); border:2px solid var(--border); }
+.rec-user{ font-weight:700; }
+.rec-bio{ color:var(--muted); font-size:.95rem; min-height:2.2em; }
+.rec-actions{ display:flex; gap:8px; justify-content:flex-end }
+
+/* ====== Feed list ====== */
+.feed-list{ display:flex; flex-direction:column; gap:12px; }
+.post{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:12px;
+  box-shadow:var(--shadow);
+}
+.post-head{ display:flex; gap:10px; align-items:center; }
+.post-ava{ width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg,var(--primary),var(--highlight)); border:2px solid var(--border); }
+.post-user{ font-weight:700; }
+
+/* ====== Ranking list ====== */
+.rank-list{ display:flex; flex-direction:column; gap:10px; }
+.rank-item{
+  display:flex; align-items:center; gap:10px;
+  padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--bg-soft);
+}
+.badge{
+  width:26px; height:26px; border-radius:8px; display:grid; place-items:center;
+  font-weight:800; font-size:.95rem;
+  color:#fefefe; background: #b87912; /* menos brillante que antes */
+  border:1px solid color-mix(in oklab, #b87912, black 25%);
+}
+
+/* FAB para nueva publicación (reutiliza la de hábitos pero independiente si quieres) */
+.fab{
+  position:fixed; right:24px; bottom:24px;
+  width:56px; height:56px; border-radius:18px;
+  display:grid; place-items:center; font-size:28px;
+  background:var(--warning); color:#1b1200;
+  border:1px solid color-mix(in oklab, var(--warning), black 12%);
+  box-shadow:var(--shadow); cursor:pointer;
+}
+
+/* Responsive: en móviles, una sola columna */
+@media (max-width: 980px){
+  .home-layout{ grid-template-columns: 1fr; }
+  .sticky{ position:static; }
+}
+
+
+.post-actions .btn.is-liked { outline: 2px solid #f66; }
+.comments-wrap { background:#fafafa; border:1px solid #eee; border-radius:8px; padding:8px; margin-top:8px; }
+.comment-item { padding:6px 0; border-bottom:1px solid #eee; }
+.comment-item:last-child { border-bottom: none; }
+
+
+
+/* estilos minimos para la parte de feed */
+.btn-like.is-liked { transform: scale(1.02); filter: saturate(1.15); }
+.comment { padding:6px 0; border-bottom:1px dashed var(--border-color); }
+.comment:last-child { border-bottom:none; }

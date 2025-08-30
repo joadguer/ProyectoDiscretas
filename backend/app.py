@@ -1,15 +1,16 @@
 import os, datetime, math
 from contextlib import contextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel,  EmailStr, constr
+from pydantic import BaseModel, conint,  EmailStr, constr
 from dotenv import load_dotenv
 from typing import Optional, Literal,  List, Dict
-
+from enum import Enum
 import mysql.connector
 from mysql.connector import pooling
+
 
 # --- Config ---
 BASE_DIR = os.path.dirname(__file__)
@@ -193,36 +194,19 @@ def public_rank(
         "items": items
     }
 
-
-class ProfileVisibility(BaseModel):
-    user_id: int
-    is_public: bool
-    bio: Optional[str] = None
-
-@app.put("/profile/visibility")
-def set_profile_visibility(p: ProfileVisibility):
-    with get_conn() as con:
-        cur = con.cursor()
-        cur.execute("SELECT 1 FROM profiles WHERE user_id=%s", (p.user_id,))
-        if not cur.fetchone():
-            raise HTTPException(404, "Perfil no encontrado")
-
-        cur.execute("""
-            UPDATE profiles
-               SET is_public=%s, bio=%s
-             WHERE user_id=%s
-        """, (1 if p.is_public else 0, p.bio, p.user_id))
-
-        cur = con.cursor(dictionary=True)
-        cur.execute("""
-            SELECT first_name, last_name, gender, birth_date, is_public, bio
-            FROM profiles WHERE user_id=%s
-        """, (p.user_id,))
-        return {"profile": cur.fetchone()}
-
 class FriendIn(BaseModel):
     user_id: int
     target_id: int
+
+
+class FeedItem(BaseModel):
+    id: int
+    content: str
+    created_at: str
+    author: str
+    like_count: int
+    comment_count: int
+    liked_by_me: bool
 
 class PostIn(BaseModel):
     author_id: int
@@ -245,10 +229,43 @@ class CommentIn(BaseModel):
     user_id: int
     content: str
 
+class CommentOut(BaseModel):
+    id: int
+    content: str
+    created_at: str
+    username: str
+
+# por si decido agregarle reacciones
+class ReactionType(str, Enum):
+    like = "like"
+    clap = "clap"
+    star = "star"
+
 class ReactionIn(BaseModel):
     post_id: int
     user_id: int
     type: str  # 'like','clap','star'
+
+# Para /posts/{id}/like (like simple)
+class LikeToggleOut(BaseModel):
+    status: str          # "liked" | "unliked"
+    like_count: int
+
+# Para /posts/{id}/reactions/{type} (reacciones múltiples)
+class ReactionToggleOut(BaseModel):
+    status: str          # "added" | "removed"
+    counts: dict[str,int]  # {"like": 3, "clap": 1, ...}
+
+# Para devolver el resumen de reacciones de un post
+class ReactionCount(BaseModel):
+    type: ReactionType
+    count: int
+
+# class PostReactionsSummary(BaseModel):
+#     post_id: int
+#     totals: list[ReactionCount]
+#     reacted_by_me: list[ReactionType]
+
 
 class Signup(BaseModel):
     email: str
@@ -279,6 +296,36 @@ class MarkToday(BaseModel):
     user_id: int
     habit_id: int
     value: int  # 0/1
+
+
+
+class ProfileVisibility(BaseModel):
+    user_id: int
+    is_public: bool
+    bio: Optional[str] = None
+
+@app.put("/profile/visibility")
+def set_profile_visibility(p: ProfileVisibility):
+    with get_conn() as con:
+        cur = con.cursor()
+        cur.execute("SELECT 1 FROM profiles WHERE user_id=%s", (p.user_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Perfil no encontrado")
+
+        cur.execute("""
+            UPDATE profiles
+               SET is_public=%s, bio=%s
+             WHERE user_id=%s
+        """, (1 if p.is_public else 0, p.bio, p.user_id))
+
+        cur = con.cursor(dictionary=True)
+        cur.execute("""
+            SELECT first_name, last_name, gender, birth_date, is_public, bio
+            FROM profiles WHERE user_id=%s
+        """, (p.user_id,))
+        return {"profile": cur.fetchone()}
+
+
 
 
 
@@ -539,7 +586,7 @@ def list_posts(limit: int = 20):
         cur = con.cursor(dictionary=True)
         cur.execute("""
             SELECT p.id, p.content, p.created_at, u.username
-            FROM posts p JOIN users u ON u.id=p.user_id
+            FROM posts p JOIN users u ON u.id=p.author_id
             ORDER BY p.created_at DESC
             LIMIT %s
         """, (limit,))
@@ -547,6 +594,29 @@ def list_posts(limit: int = 20):
 
 @app.get("/posts/feed")
 def posts_feed(user_id: int = Query(...), page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=50)):
+    offset = (page-1)*page_size
+    with get_conn() as con:
+        cur = con.cursor(dictionary=True)
+        cur.execute("""
+            SELECT
+              p.id, p.author_id, u.username, p.content, p.habit_id, p.visibility, p.created_at,
+              (SELECT COUNT(*) FROM post_likes    pl WHERE pl.post_id = p.id) AS likes,
+              (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = p.id) AS comments,
+              EXISTS(SELECT 1 FROM post_likes pl2 WHERE pl2.post_id = p.id AND pl2.user_id = %s) AS liked_by_me
+            FROM posts p
+            JOIN users u   ON u.id = p.author_id
+            JOIN profiles pr ON pr.user_id = u.id
+            WHERE
+                 (pr.is_public = 1 AND p.visibility = 'public')
+              OR (p.author_id = %s)
+              OR (p.visibility='friends' AND EXISTS (
+                    SELECT 1 FROM friendships f WHERE f.user_id=%s AND f.friend_id=p.author_id
+                 ))
+            ORDER BY p.created_at DESC, p.id DESC
+            LIMIT %s OFFSET %s
+        """, (user_id, user_id, user_id, page_size, offset))
+        return {"items": cur.fetchall(), "page": page, "page_size": page_size}
+
     offset = (page-1)*page_size
     with get_conn() as con:
         cur = con.cursor(dictionary=True)
@@ -601,106 +671,90 @@ def posts_by_user(author_id: int = Query(...), viewer_id: int = Query(...), page
         """, (author_id, page_size, offset))
         return {"items": cur.fetchall(), "page": page, "page_size": page_size}
 
-# ---------- LIKES ----------
-@app.post("/posts/{post_id}/like")
-def like_post(post_id: int, user_id: int = Query(...)):
-    with get_conn() as con:
-        cur = con.cursor()
-        # existencia y permiso básico
-        cur.execute("""SELECT p.author_id, p.visibility, pr.is_public
-                       FROM posts p JOIN profiles pr ON pr.user_id = p.author_id
-                       WHERE p.id=%s""", (post_id,))
-        row = cur.fetchone()
-        if not row: raise HTTPException(404, "Post no existe")
-        author_id, visibility, is_public = row
-        if visibility=='friends' and user_id!=author_id and not _is_friend(con, user_id, author_id):
-            raise HTTPException(403, "No puedes reaccionar a este post")
-
-        cur.execute("INSERT IGNORE INTO post_likes(post_id, user_id) VALUES (%s,%s)", (post_id, user_id))
-        return {"ok": True}
-
-@app.delete("/posts/{post_id}/like")
-def unlike_post(post_id: int, user_id: int = Query(...)):
-    with get_conn() as con:
-        cur = con.cursor()
-        cur.execute("DELETE FROM post_likes WHERE post_id=%s AND user_id=%s", (post_id, user_id))
-        return {"ok": True}
-
-# ---------- COMENTARIOS ----------
-@app.get("/posts/{post_id}/comments")
-def list_comments(post_id: int, page: int = 1, page_size: int = 30):
+@app.get("/posts/{post_id}/comments", response_model=List[CommentOut])
+def list_comments(post_id: int, page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=50)):
     offset = (page-1)*page_size
     with get_conn() as con:
         cur = con.cursor(dictionary=True)
         cur.execute("""
-            SELECT c.id, c.post_id, c.user_id, u.username, c.content, c.created_at
+            SELECT c.id, c.content, c.created_at, u.username
             FROM post_comments c
             JOIN users u ON u.id = c.user_id
-            WHERE c.post_id=%s
+            WHERE c.post_id = %s
             ORDER BY c.created_at ASC, c.id ASC
             LIMIT %s OFFSET %s
         """, (post_id, page_size, offset))
-        return {"items": cur.fetchall()}
+        return cur.fetchall()
 
-@app.post("/posts/{post_id}/comments")
-def add_comment(post_id: int, p: CommentIn):
-    if not p.content.strip():
-        raise HTTPException(400, "Comentario vacío")
+@app.post("/posts/{post_id}/comments", status_code=201)
+def create_comment(post_id: int, p: CommentIn):
+    content = (p.content or "").strip()
+    if not content:
+        raise HTTPException(400, "Contenido vacío")
+    if len(content) > 600:
+        raise HTTPException(400, "Máximo 600 caracteres")
+
     with get_conn() as con:
         cur = con.cursor()
-        # verificar post + permisos básicos (similar a like)
-        cur.execute("""SELECT p.author_id, p.visibility, pr.is_public
-                       FROM posts p JOIN profiles pr ON pr.user_id = p.author_id
-                       WHERE p.id=%s""", (post_id,))
-        row = cur.fetchone()
-        if not row: raise HTTPException(404, "Post no existe")
-        author_id, visibility, is_public = row
-        if visibility=='friends' and p.user_id!=author_id and not _is_friend(con, p.user_id, author_id):
-            raise HTTPException(403, "No puedes comentar este post")
+        # validar post
+        cur.execute("SELECT 1 FROM posts WHERE id=%s", (post_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Post no existe")
 
+        # insertar
         cur.execute("""
-            INSERT INTO post_comments(post_id, user_id, content)
-            VALUES (%s,%s,%s)
-        """, (post_id, p.user_id, p.content.strip()))
-        cid = cur.lastrowid
-        return {"ok": True, "id": cid}
-
-@app.delete("/posts/{post_id}/comments/{comment_id}")
-def delete_comment(post_id: int, comment_id: int, user_id: int = Query(...)):
-    with get_conn() as con:
-        cur = con.cursor()
-        # solo autor del comentario o autor del post
-        cur.execute("""
-          SELECT c.user_id, p.author_id
-          FROM post_comments c JOIN posts p ON p.id=c.post_id
-          WHERE c.id=%s AND c.post_id=%s
-        """, (comment_id, post_id))
-        row = cur.fetchone()
-        if not row: raise HTTPException(404, "Comentario no existe")
-        c_author, p_author = row
-        if user_id not in (c_author, p_author):
-            raise HTTPException(403, "No autorizado")
-        cur.execute("DELETE FROM post_comments WHERE id=%s", (comment_id,))
-        return {"ok": True}
-    
-@app.post("/comments")
-def add_comment(c: CommentIn):
-    with get_conn() as con:
-        cur = con.cursor()
-        cur.execute("INSERT INTO comments(post_id,user_id,content) VALUES (%s,%s,%s)",
-                    (c.post_id, c.user_id, c.content))
+            INSERT INTO post_comments (post_id, user_id, content)
+            VALUES (%s, %s, %s)
+        """, (post_id, p.user_id, content))
         return {"ok": True, "id": cur.lastrowid}
 
-@app.post("/reactions")
-def react(r: ReactionIn):
+@app.post("/posts/{post_id}/like", response_model=LikeToggleOut)
+def toggle_like(post_id: int, user_id: int = Query(...)):
     with get_conn() as con:
         cur = con.cursor()
-        cur.execute("""
-            INSERT INTO reactions(post_id,user_id,type) VALUES (%s,%s,%s)
-            ON DUPLICATE KEY UPDATE type=VALUES(type)
-        """, (r.post_id, r.user_id, r.type))
-        return {"ok": True}
+        # 1) intento borrar (si había like)
+        cur.execute("DELETE FROM post_likes WHERE post_id=%s AND user_id=%s", (post_id, user_id))
+        if cur.rowcount == 0:
+            # 2) si no había, inserto
+            cur.execute("INSERT INTO post_likes (post_id, user_id) VALUES (%s,%s)", (post_id, user_id))
+            status = "liked"
+        else:
+            status = "unliked"
 
+        cur = con.cursor(dictionary=True)
+        cur.execute("SELECT COUNT(*) AS like_count FROM post_likes WHERE post_id=%s", (post_id,))
+        like_count = cur.fetchone()["like_count"]
+
+    return {"status": status, "like_count": like_count}
+
+
+
+# por si agrego reacciones al frontend
+@app.post("/posts/{post_id}/reactions/{rx_type}", response_model=ReactionToggleOut)
+def toggle_reaction(post_id: int, rx_type: ReactionType, user_id: int = Query(...)):
+    with get_conn() as con:
+        cur = con.cursor()
+        # toggle por (post_id, user_id, type)
+        cur.execute("DELETE FROM post_reactions WHERE post_id=%s AND user_id=%s AND type=%s",
+                    (post_id, user_id, rx_type.value))
+        if cur.rowcount == 0:
+            cur.execute("INSERT INTO post_reactions (post_id, user_id, type) VALUES (%s,%s,%s)",
+                        (post_id, user_id, rx_type.value))
+            status = "added"
+        else:
+            status = "removed"
+
+        # devolver conteos por tipo
+        cur = con.cursor(dictionary=True)
+        cur.execute("""
+            SELECT type, COUNT(*) AS n
+            FROM post_reactions
+            WHERE post_id=%s
+            GROUP BY type
+        """, (post_id,))
+        counts = {row["type"]: int(row["n"]) for row in cur.fetchall()}
+
+    return {"status": status, "counts": counts}
 
 
 @app.get("/friends/suggested")
