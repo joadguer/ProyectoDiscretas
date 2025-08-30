@@ -49,35 +49,72 @@ CREATE INDEX idx_logs_habit_day   ON logs(habit_id, day);
 
 
 -- Publicaciones que hacen los usuarios
+-- CREATE TABLE IF NOT EXISTS posts (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   user_id INT NOT NULL,
+--   content TEXT NOT NULL,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+-- ) ENGINE=InnoDB;
+
+-- -- Comentarios en publicaciones
+-- CREATE TABLE IF NOT EXISTS comments (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   post_id INT NOT NULL,
+--   user_id INT NOT NULL,
+--   content TEXT NOT NULL,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--   FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+--   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+-- ) ENGINE=InnoDB;
+
+-- -- Reacciones (like, clap, etc.)
+-- CREATE TABLE IF NOT EXISTS reactions (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   post_id INT NOT NULL,
+--   user_id INT NOT NULL,
+--   type ENUM('like','clap','star') NOT NULL,
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--   UNIQUE(post_id, user_id, type), -- cada user solo 1 reacción de un tipo por post
+--   FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+--   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+-- ) ENGINE=InnoDB;
+
+-- Posts
 CREATE TABLE IF NOT EXISTS posts (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NOT NULL,
-  content TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  author_id   INT NOT NULL,
+  habit_id    INT NULL,
+  content     TEXT NOT NULL,
+  visibility  ENUM('public','friends') NOT NULL DEFAULT 'public',
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_posts_author_created (author_id, created_at DESC),
+  INDEX idx_posts_created (created_at DESC),
+  CONSTRAINT fk_posts_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_posts_habit  FOREIGN KEY (habit_id)  REFERENCES habits(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- Comentarios en publicaciones
-CREATE TABLE IF NOT EXISTS comments (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  post_id INT NOT NULL,
-  user_id INT NOT NULL,
-  content TEXT NOT NULL,
+-- Likes (una reacción simple tipo “me gusta”)
+CREATE TABLE IF NOT EXISTS post_likes (
+  post_id  INT NOT NULL,
+  user_id  INT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  PRIMARY KEY(post_id, user_id),
+  INDEX idx_likes_user (user_id),
+  CONSTRAINT fk_likes_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_likes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- Reacciones (like, clap, etc.)
-CREATE TABLE IF NOT EXISTS reactions (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  post_id INT NOT NULL,
-  user_id INT NOT NULL,
-  type ENUM('like','clap','star') NOT NULL,
+-- Comentarios
+CREATE TABLE IF NOT EXISTS post_comments (
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  post_id   INT NOT NULL,
+  user_id   INT NOT NULL,
+  content   VARCHAR(600) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(post_id, user_id, type), -- cada user solo 1 reacción de un tipo por post
-  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  INDEX idx_comments_post_created (post_id, created_at),
+  CONSTRAINT fk_comments_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_comments_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 
@@ -103,10 +140,15 @@ USE habitos_db;
 
 -- === Usuarios (del id=2 en adelante) ===
 INSERT INTO users (email, username, password) VALUES
+('josue@gmail.com','josue','root123'),      -- id=1 
 ('bob@example.com','bob','1234'),      -- id=2
 ('carol@example.com','carol','1234'),  -- id=3
 ('dave@example.com','dave','1234'),    -- id=4
 ('eve@example.com','eve','1234');      -- id=5
+
+
+INSERT INTO profiles (user_id, first_name, last_name, gender, birth_date, is_public) VALUES
+(1,'Josue','Guerrero','M','1995-03-20',1);  -- Usuario real (id=1)
 
 -- === Perfiles ===
 INSERT INTO profiles (user_id, first_name, last_name, gender, birth_date, is_public, bio) VALUES

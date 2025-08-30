@@ -91,11 +91,11 @@ addHabitInput?.addEventListener('keydown', (e)=>{
 });
 
 // Navegación
-const pages = ['auth','home','habits','stats','friends','profile'];
+const pages = ['auth','home','habits','stats','friends','community','profile'];
 
 function goto(page){
   pages.forEach(p => { const el = document.getElementById(`page-${p}`); if(el) el.hidden = p!==page; });
-  $$('#tabs .tab').forEach(t=> t.classList.toggle('active', t.dataset.page===page));
+  $$('#tabs .tab').forEach(t=> t.classList.toggle('active', t.dataset.page===page)); 
 }
 
 $('#tabs').addEventListener('click', (e)=>{
@@ -108,8 +108,105 @@ $('#tabs').addEventListener('click', (e)=>{
   if(page==='stats') renderStats();
   if(page==='friends') renderFriendsPage();
   if(page==='profile') renderProfile();
+  if(page==='community') renderCommunity();
 });
 
+// Crear post
+$('#post-create')?.addEventListener('click', async ()=>{
+  const content = ($('#post-content')?.value || '').trim();
+  const visibility = $('#post-visibility')?.value || 'public';
+  if(!content) return showToast?.('Escribe algo','error');
+  try{
+    await api('/posts', {method:'POST', body: JSON.stringify({
+      author_id: state.user.id, content, visibility
+    })});
+    $('#post-content').value = '';
+    showToast?.('Publicado','success');
+    feedPage = 1;
+    loadFeed(true);
+  }catch(e){ showToast?.(e.message,'error'); }
+});
+
+
+// Feed
+let feedPage = 1;
+async function loadFeed(clear=false){
+  try{
+    const res = await api(`/posts/feed?user_id=${state.user.id}&page=${feedPage}&page_size=8`);
+    const list = res.items || [];
+    const box = $('#feedList'); if(!box) return;
+    if(clear) box.innerHTML = '';
+    list.forEach(drawPostCard);
+    if(list.length===0 && clear){ box.innerHTML='<div class="muted">Sin publicaciones aún.</div>'; }
+    feedPage++;
+  }catch(e){ showToast?.(e.message,'error'); }
+}
+$('#feed-more')?.addEventListener('click', ()=> loadFeed(false));
+
+function drawPostCard(p){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div style="display:flex; gap:10px; align-items:flex-start">
+      <div class="avatar" style="width:40px;height:40px;border-radius:10px"></div>
+      <div style="flex:1">
+        <div style="font-weight:700">@${p.username}</div>
+        <div class="muted" style="font-size:.9rem">${new Date(p.created_at).toLocaleString()}</div>
+        <div style="margin-top:6px; white-space:pre-wrap">${p.content}</div>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:8px">
+          <button class="btn" data-like="${p.id}">❤️ ${p.likes}</button>
+          <button class="btn ghost" data-cmt="${p.id}">💬 ${p.comments}</button>
+        </div>
+        <div id="cbox-${p.id}" style="display:none; margin-top:8px">
+          <div style="display:flex; gap:6px">
+            <input id="cinput-${p.id}" class="input" placeholder="Escribe un comentario..." />
+            <button class="btn" data-sendc="${p.id}">Enviar</button>
+          </div>
+          <div id="clist-${p.id}" style="margin-top:6px"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  // like
+  card.querySelector(`[data-like="${p.id}"]`).onclick = async ()=>{
+    try{
+      await api(`/posts/${p.id}/like?user_id=${state.user.id}`, {method:'POST'});
+      showToast?.('Me gusta','success');
+      feedPage = 1; loadFeed(true);
+    }catch(e){ showToast?.(e.message,'error'); }
+  };
+  // abrir comentarios
+  card.querySelector(`[data-cmt="${p.id}"]`).onclick = async ()=>{
+    const box = document.getElementById(`cbox-${p.id}`);
+    box.style.display = box.style.display==='none' ? 'block' : 'none';
+    if(box.style.display==='block'){ loadComments(p.id); }
+  };
+  // enviar comentario
+  card.querySelector(`[data-sendc="${p.id}"]`).onclick = async ()=>{
+    const inp = document.getElementById(`cinput-${p.id}`);
+    const text = (inp.value||'').trim(); if(!text) return;
+    try{
+      await api(`/posts/${p.id}/comments`, {method:'POST', body: JSON.stringify({user_id: state.user.id, content: text})});
+      inp.value=''; loadComments(p.id);
+    }catch(e){ showToast?.(e.message,'error'); }
+  };
+  $('#feedList').appendChild(card);
+}
+async function loadComments(postId){
+  try{
+    const res = await api(`/posts/${postId}/comments?page=1&page_size=50`);
+    const list = res.items || [];
+    const wrap = document.getElementById(`clist-${postId}`); wrap.innerHTML='';
+    list.forEach(c=>{
+      const row = document.createElement('div');
+      row.className='hint';
+      row.textContent = `@${c.username}: ${c.content}`;
+      wrap.appendChild(row);
+    });
+  }catch(e){ showToast?.(e.message,'error'); }
+}
+
+function renderCommunity(){ feedPage=1; loadFeed(true); }
 
 // ---- Switch entre Login y Signup ----
 function setAuthView(view){ // 'login' | 'signup'
