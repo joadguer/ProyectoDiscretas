@@ -1,0 +1,38 @@
+USE habitos_db;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS profiles (
+  user_id INT PRIMARY KEY,
+  first_name VARCHAR(100) NOT NULL,
+  last_name  VARCHAR(100) NOT NULL,
+  gender ENUM('F','M','Otro') NULL,
+  birth_date DATE NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS habits (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  CONSTRAINT fk_habits_user
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  habit_id INT NOT NULL,
+  day DATE NOT NULL,
+  value TINYINT(1) NOT NULL CHECK (value IN (0,1)),
+  CONSTRAINT uq_habit_day UNIQUE (habit_id, day),
+  CONSTRAINT fk_logs_habit
+    FOREIGN KEY (habit_id) REFERENCES habits(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB;

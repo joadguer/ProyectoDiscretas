@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: habits_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: habitos_db
+      MYSQL_USER: habitos_user
+      MYSQL_PASSWORD: habitos_pass
+    ports:
+      - "3406:3306"             # externo 3406, interno 3306 (evita conflictos)
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  backend:
+    build: ./backend
+    container_name: habits_backend
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DB: habitos_db
+      MYSQL_USER: habitos_user
+      MYSQL_PASSWORD: habitos_pass
+      CORS_ORIGINS: "*"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./frontend:/frontend   # <-- Montar el código del frontend
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    image: nginx:alpine
+    container_name: habits_frontend
+    restart: always
+    ports:
+      - "5500:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:

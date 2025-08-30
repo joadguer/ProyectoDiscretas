@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hábitos – Maqueta</title>
+  <link rel="stylesheet" href="./styles.css?v=2">
+</head>
+<!-- Toasts -->
+<div id="toast-wrap" aria-live="polite" aria-atomic="true"></div>
+
+<body data-auth="guest">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="dot"></span> Hábitos</div>
+      <div class="actions">
+        <button id="themeBtn" class="btn ghost" title="Alternar tema">🌓</button>
+        <button id="logoutBtn" class="btn">Salir</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Tabs -->
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-page="home">Inicio</button>
+      <button class="tab" data-page="habits">Hábitos</button>
+      <button class="tab" data-page="stats">Estadísticas</button>
+      <button class="tab" data-page="profile">Perfil</button>
+    </div>
+
+
+    <!-- AUTH -->
+<!-- AUTH -->
+<section id="page-auth" class="page">
+  <!-- Bienvenida -->
+<div class="card welcome">
+  <div class="welcome-text">
+    <h1>Bienvenido a Hábitos</h1>
+    <p class="muted">
+      Registra tus hábitos diarios y mira tu progreso semana a semana. 
+      Inicia sesión o crea tu cuenta para comenzar.
+    </p>
+  </div>
+  <img src="assets/welcome.png" class="welcome-img" alt="Ilustración de hábitos">
+</div>
+
+  <div class="auth card">
+
+    <!-- Toggle entre Login y Crear cuenta -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-authview="login">Iniciar sesión</button>
+      <button class="auth-tab" data-authview="signup">Crear cuenta</button>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="auth-login" class="auth-view">
+      <h2>Bienvenido 👋</h2>
+      <p class="muted">Ingresa con tu usuario y contraseña.</p>
+      <div class="field">
+        <label>Usuario</label>
+        <input id="login-username" type="text" placeholder="usuario" />
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input id="login-pass" type="password" placeholder="••••••••" />
+      </div>
+      <div style="display:flex; gap:8px">
+        <button id="loginBtn" class="btn primary">Iniciar sesión</button>
+      </div>
+      <div class="switch-auth hint">
+        ¿No tienes cuenta? <a href="#" id="go-signup">Crear cuenta</a>
+      </div>
+    </div>
+
+    <!-- SIGNUP -->
+    <div id="auth-signup" class="auth-view" hidden>
+      <h2>Crea tu cuenta ✨</h2>
+      <p class="muted">Completa tus datos para personalizar tu perfil.</p>
+
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px">
+        <div class="field">
+          <label>Correo</label>
+          <input id="su-email" type="email" placeholder="tu@correo.com" />
+        </div>
+        <div class="field">
+          <label>Usuario</label>
+          <input id="su-username" type="text" placeholder="usuario" />
+        </div>
+        <div class="field">
+          <label>Contraseña</label>
+          <input id="su-pass" type="password" placeholder="••••••••" />
+        </div>
+        <div class="field">
+          <label>Nombre</label>
+          <input id="su-firstname" type="text" placeholder="Nombre" />
+        </div>
+        <div class="field">
+          <label>Apellido</label>
+          <input id="su-lastname" type="text" placeholder="Apellido" />
+        </div>
+        <div class="field">
+          <label>Fecha de nacimiento</label>
+          <input type="date" id="su-birth" required pattern="\d{4}-\d{2}-\d{2}">
+        </div>
+        <div class="field">
+          <label>Género</label>
+          <select id="su-gender">
+            <option value="">Selecciona…</option>
+            <option value="F">Femenino</option>
+            <option value="M">Masculino</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-top:10px">
+        <button id="signupBtn" class="btn primary">Crear cuenta</button>
+        <button id="go-login" class="btn">Ya tengo cuenta</button>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- INICIO (home) -->
+<section id="page-home" class="page" hidden>
+  <div class="card welcome">
+    <div class="welcome-text">
+      <h1 id="welcome-title">¡Hola!</h1>
+      <p class="muted" id="welcome-sub">
+        Registra tus hábitos diarios y revisa tu progreso semanal.
+      </p>
+      <div style="display:flex; gap:8px; margin-top:12px;">
+        <button id="home-add" class="btn primary">Agregar hábito</button>
+        <button id="home-gohabits" class="btn">Ver hábitos</button>
+      </div>
+    </div>
+    <img src="assets/welcome.png" class="welcome-img" alt="Ilustración de hábitos">
+  </div>
+</section>
+
+    <!-- HABITS -->
+    <section id="page-habits" class="page" hidden>
+      <div class="grid" id="habitGrid"></div>
+      <button id="addHabitBtn" class="fab" title="Agregar hábito">+</button>
+      <p class="hint">Toca un hábito para registrar si lo cumpliste hoy.</p>
+    </section>
+
+    <!-- STATS -->
+    <section id="page-stats" class="page" hidden>
+      <div class="grid" id="statsGrid"></div>
+    </section>
+
+    <!-- PROFILE -->
+    <section id="page-profile" class="page" hidden>
+      <div class="card" style="display:flex; gap:14px; align-items:center">
+        <div class="avatar"></div>
+        <div>
+          <h3 id="p-username">Usuario</h3>
+          <div class="muted" id="p-email">correo@example.com</div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <h3>Ajustes</h3>
+        <!-- Información de perfil -->
+        <div class="card" style="margin-top:12px">
+          <h3>Información de perfil</h3>
+          <div id="profile-extra" class="profile-grid">
+            <!-- Se llena desde app.js -->
+          </div>
+        </div>
+
+
+        <!-- Editar perfil -->
+        <div class="card" style="margin-top:12px">
+          <h3>Editar perfil</h3>
+          <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin-top:6px">
+            <div class="field">
+              <label>Nombre</label>
+              <input id="ep-first" type="text" placeholder="Nombre">
+            </div>
+            <div class="field">
+              <label>Apellido</label>
+              <input id="ep-last" type="text" placeholder="Apellido">
+            </div>
+            <div class="field">
+              <label>Género</label>
+              <select id="ep-gender">
+                <option value="">Selecciona…</option>
+                <option value="F">Femenino</option>
+                <option value="M">Masculino</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Fecha de nacimiento</label>
+              <input id="ep-birth" type="date">
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:10px">
+            <button id="ep-save" class="btn primary">Guardar cambios</button>
+            <span id="ep-hint" class="hint"></span>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center; margin-top:8px">
+          <label class="muted">Tema oscuro</label>
+          <button id="themeBtn2" class="btn">Alternar</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal para marcar cumplimiento de HOY -->
+  <div id="modal" class="modal" aria-hidden="true">
+    <div class="sheet">
+      <h3 id="modalTitle">Registrar cumplimiento</h3>
+      <p class="muted" id="modalDesc">¿Cumpliste el hábito hoy?</p>
+      <div style="display:flex; gap:8px; margin-top:8px">
+        <button id="doneBtn" class="btn primary">Sí, cumplido</button>
+        <button id="skipBtn" class="btn">No hoy</button>
+        <button id="closeModal" class="btn ghost" style="margin-left:auto">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+    <!-- Modal: Agregar hábito minimalista -->
+  <div id="addHabitModal" class="modal" aria-hidden="true">
+    <div class="sheet" style="text-align:center; padding:24px;">
+      <h3 style="margin-bottom:16px;">Nuevo hábito</h3>
+      <input id="new-habit-name" 
+            type="text" 
+            placeholder="Ej. Beber 8 vasos de agua" 
+            style="width:100%; padding:12px; border-radius:8px; border:1px solid var(--border-color);" />
+
+      <div style="display:flex; justify-content:center; gap:10px; margin-top:20px;">
+        <button id="createHabitBtn" class="btn primary">Agregar</button>
+        <button id="cancelHabitBtn" class="btn">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* Si sirves el frontend desde el backend, deja vacío.
+       Si los separas, pon ej: window.API_BASE = 'http://localhost:8000' */
+    window.API_BASE = "";
+  </script>
+  <script src="./app.js?v=2"></script>
+</body>
+</html>
