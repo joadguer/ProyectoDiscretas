@@ -1,4 +1,4 @@
-import os, datetime
+import os, datetime, math
 from contextlib import contextmanager
 
 from fastapi import FastAPI, HTTPException, Query
@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel,  EmailStr, constr
 from dotenv import load_dotenv
+from typing import Optional, Literal,  List, Dict
+
 import mysql.connector
 from mysql.connector import pooling
 
@@ -60,6 +62,182 @@ app.add_middleware(
 )
 
 # --- Modelos ---
+@app.get("/public/users")
+def public_users(
+    q: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50
+):
+    if page <= 0 or page_size <= 0 or page_size > 200:
+        raise HTTPException(400, "Parámetros de paginación inválidos")
+
+    offset = (page - 1) * page_size
+    like = f"%{q.strip()}%" if q else None
+
+    with get_conn() as con:
+        cur = con.cursor(dictionary=True)
+        if like:
+            cur.execute("""
+                SELECT u.id, u.username, p.bio
+                FROM profiles p
+                JOIN users u ON u.id = p.user_id
+                WHERE p.is_public=1 AND u.username LIKE %s
+                ORDER BY u.username ASC
+                LIMIT %s OFFSET %s
+            """, (like, page_size, offset))
+        else:
+            cur.execute("""
+                SELECT u.id, u.username, p.bio
+                FROM profiles p
+                JOIN users u ON u.id = p.user_id
+                WHERE p.is_public=1
+                ORDER BY u.username ASC
+                LIMIT %s OFFSET %s
+            """, (page_size, offset))
+        items = cur.fetchall()
+
+        # total públicos (para paginación)
+        if like:
+            cur.execute("""
+                SELECT COUNT(*) AS total
+                FROM profiles p JOIN users u ON u.id=p.user_id
+                WHERE p.is_public=1 AND u.username LIKE %s
+            """, (like,))
+        else:
+            cur.execute("SELECT COUNT(*) AS total FROM profiles WHERE is_public=1")
+        total = cur.fetchone()["total"]
+
+    return {"page": page, "page_size": page_size, "total": total, "items": items}
+
+@app.get("/public/user/{username}")
+def public_user_detail(username: str):
+    today = datetime.date.today()
+    start = today - datetime.timedelta(days=6)
+
+    with get_conn() as con:
+        cur = con.cursor(dictionary=True)
+        # user + perfil público
+        cur.execute("""
+            SELECT u.id, u.username, p.bio, p.is_public
+            FROM users u
+            JOIN profiles p ON p.user_id = u.id
+            WHERE u.username=%s
+        """, (username,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Usuario no encontrado")
+        if not row["is_public"]:
+            raise HTTPException(403, "Este perfil no es público")
+
+        user_id = row["id"]
+
+        # número de hábitos
+        cur.execute("SELECT COUNT(*) AS habits FROM habits WHERE user_id=%s", (user_id,))
+        habits_count = cur.fetchone()["habits"]
+
+        # días cumplidos (últimos 7)
+        cur.execute("""
+            SELECT COALESCE(SUM(CASE WHEN l.value=1 THEN 1 ELSE 0 END),0) AS done_days
+            FROM habits h
+            LEFT JOIN logs l ON l.habit_id=h.id AND l.day BETWEEN %s AND %s
+            WHERE h.user_id=%s
+        """, (start, today, user_id))
+        done_days = cur.fetchone()["done_days"]
+
+    return {
+        "user": {"id": user_id, "username": row["username"], "bio": row["bio"]},
+        "summary": {
+            "window_days": 7,
+            "range": {"start": start.isoformat(), "end": today.isoformat()},
+            "habits_count": habits_count,
+            "done_days": int(done_days)
+        }
+    }
+
+@app.get("/public/rank")
+def public_rank(
+    window: int = Query(7, ge=1, le=365),  # aceptamos int, validamos abajo a 7/30
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+):
+    # normaliza a 7 o 30 (cualquier otro valor se redondea a 7)
+    window = 30 if window == 30 else 7
+
+    today = datetime.date.today()
+    start = today - datetime.timedelta(days=window - 1)
+    offset = (page - 1) * page_size
+
+    with get_conn() as con:
+        cur = con.cursor(dictionary=True)
+        cur.execute("""
+            SELECT u.id, u.username,
+                   COALESCE(SUM(CASE WHEN l.value=1 THEN 1 ELSE 0 END), 0) AS done_days
+            FROM users u
+            JOIN profiles p ON p.user_id = u.id AND p.is_public = 1
+            LEFT JOIN habits h ON h.user_id = u.id
+            LEFT JOIN logs l   ON l.habit_id = h.id
+                              AND l.day BETWEEN %s AND %s
+            GROUP BY u.id, u.username
+            ORDER BY done_days DESC, u.username ASC
+            LIMIT %s OFFSET %s
+        """, (start, today, page_size, offset))
+        items = cur.fetchall()
+
+        cur.execute("SELECT COUNT(*) AS total_public FROM profiles WHERE is_public=1")
+        total_public = cur.fetchone()["total_public"]
+
+    return {
+        "window": window,
+        "range": {"start": start.isoformat(), "end": today.isoformat()},
+        "page": page, "page_size": page_size, "total_public": total_public,
+        "items": items
+    }
+
+
+class ProfileVisibility(BaseModel):
+    user_id: int
+    is_public: bool
+    bio: Optional[str] = None
+
+@app.put("/profile/visibility")
+def set_profile_visibility(p: ProfileVisibility):
+    with get_conn() as con:
+        cur = con.cursor()
+        cur.execute("SELECT 1 FROM profiles WHERE user_id=%s", (p.user_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Perfil no encontrado")
+
+        cur.execute("""
+            UPDATE profiles
+               SET is_public=%s, bio=%s
+             WHERE user_id=%s
+        """, (1 if p.is_public else 0, p.bio, p.user_id))
+
+        cur = con.cursor(dictionary=True)
+        cur.execute("""
+            SELECT first_name, last_name, gender, birth_date, is_public, bio
+            FROM profiles WHERE user_id=%s
+        """, (p.user_id,))
+        return {"profile": cur.fetchone()}
+
+class FriendIn(BaseModel):
+    user_id: int
+    target_id: int
+
+class PostIn(BaseModel):
+    user_id: int
+    content: str
+
+class CommentIn(BaseModel):
+    post_id: int
+    user_id: int
+    content: str
+
+class ReactionIn(BaseModel):
+    post_id: int
+    user_id: int
+    type: str  # 'like','clap','star'
+
 class Signup(BaseModel):
     email: str
     username: str
@@ -266,6 +444,248 @@ def stats_weekly(user_id: int = Query(...)):
                 "today_done": today_done
             })
         return {"today": today.isoformat(), "items": items}
+
+@app.post("/posts")
+def create_post(p: PostIn):
+    with get_conn() as con:
+        cur = con.cursor()
+        cur.execute("INSERT INTO posts(user_id, content) VALUES (%s,%s)", (p.user_id, p.content))
+        return {"ok": True, "id": cur.lastrowid}
+
+@app.post("/friends/add")
+def friends_add(p: FriendIn):
+    if p.user_id == p.target_id:
+        raise HTTPException(400, "No puedes agregarte a ti mismo")
+    with get_conn() as con:
+        cur = con.cursor()
+        # verifica que ambos usuarios existan
+        cur.execute("SELECT 1 FROM users WHERE id=%s", (p.user_id,))
+        if not cur.fetchone(): raise HTTPException(404, "Usuario no existe")
+        cur.execute("SELECT 1 FROM users WHERE id=%s", (p.target_id,))
+        if not cur.fetchone(): raise HTTPException(404, "Destino no existe")
+        # inserta ambas direcciones (si ya existe, ignora)
+        cur.execute("INSERT IGNORE INTO friendships(user_id, friend_id) VALUES (%s,%s)", (p.user_id, p.target_id))
+        cur.execute("INSERT IGNORE INTO friendships(user_id, friend_id) VALUES (%s,%s)", (p.target_id, p.user_id))
+        return {"ok": True}
+
+@app.get("/friends/list")
+def friends_list(user_id: int = Query(...)):
+    with get_conn() as con:
+        cur = con.cursor(dictionary=True)
+        cur.execute("""
+            SELECT u.id, u.username, p.bio, p.is_public
+            FROM friendships f
+            JOIN users u   ON u.id = f.friend_id
+            LEFT JOIN profiles p ON p.user_id = u.id
+            WHERE f.user_id = %s
+            ORDER BY u.username ASC
+        """, (user_id,))
+        return {"friends": cur.fetchall()}
+
+@app.delete("/friends/remove")
+def friends_remove(user_id: int = Query(...), target_id: int = Query(...)):
+    if user_id == target_id:
+        raise HTTPException(400, "Operación inválida")
+    with get_conn() as con:
+        cur = con.cursor()
+        cur.execute("DELETE FROM friendships WHERE user_id=%s AND friend_id=%s", (user_id, target_id))
+        cur.execute("DELETE FROM friendships WHERE user_id=%s AND friend_id=%s", (target_id, user_id))
+        return {"ok": True}
+
+@app.get("/posts")
+def list_posts(limit: int = 20):
+    with get_conn() as con:
+        cur = con.cursor(dictionary=True)
+        cur.execute("""
+            SELECT p.id, p.content, p.created_at, u.username
+            FROM posts p JOIN users u ON u.id=p.user_id
+            ORDER BY p.created_at DESC
+            LIMIT %s
+        """, (limit,))
+        return {"posts": cur.fetchall()}
+
+@app.post("/comments")
+def add_comment(c: CommentIn):
+    with get_conn() as con:
+        cur = con.cursor()
+        cur.execute("INSERT INTO comments(post_id,user_id,content) VALUES (%s,%s,%s)",
+                    (c.post_id, c.user_id, c.content))
+        return {"ok": True, "id": cur.lastrowid}
+
+@app.post("/reactions")
+def react(r: ReactionIn):
+    with get_conn() as con:
+        cur = con.cursor()
+        cur.execute("""
+            INSERT INTO reactions(post_id,user_id,type) VALUES (%s,%s,%s)
+            ON DUPLICATE KEY UPDATE type=VALUES(type)
+        """, (r.post_id, r.user_id, r.type))
+        return {"ok": True}
+
+
+
+@app.get("/friends/suggested")
+def friends_suggested(user_id: int = Query(...), limit: int = 20, window: int = 30):
+    if limit <= 0 or limit > 100:
+        raise HTTPException(400, "limit inválido (1..100)")
+    if window not in (7, 30):
+        raise HTTPException(400, "window inválido (7|30)")
+
+    today = datetime.date.today()
+    start = today - datetime.timedelta(days=window - 1)
+
+    # reparto 30% / 30% / 20% / 20%
+    n_foaf   = max(1, round(limit * 0.30))
+    n_sim    = max(1, round(limit * 0.30))
+    n_trend  = max(1, round(limit * 0.20))
+    n_fill   = max(0, limit - (n_foaf + n_sim + n_trend))
+
+    with get_conn() as con:
+        cur = con.cursor(dictionary=True)
+
+        # 0) conjunto de amigos actuales + yo (para excluir)
+        cur.execute("SELECT friend_id FROM friendships WHERE user_id=%s", (user_id,))
+        exclude_ids = {user_id} | {row["friend_id"] for row in cur.fetchall()}
+
+        # 1) FOAF (amigos de mis amigos) con conteo de mutuos
+        #    - públicos
+        #    - no en exclude
+        cur.execute("""
+            SELECT f2.friend_id AS candidate, COUNT(*) AS mutuals
+            FROM friendships f1
+            JOIN friendships f2 ON f1.friend_id = f2.user_id
+            JOIN profiles   p   ON p.user_id = f2.friend_id AND p.is_public=1
+            WHERE f1.user_id = %s
+              AND f2.friend_id <> %s
+              AND f2.friend_id NOT IN (
+                    SELECT friend_id FROM friendships WHERE user_id=%s
+              )
+            GROUP BY candidate
+            ORDER BY mutuals DESC, candidate ASC
+            LIMIT %s
+        """, (user_id, user_id, user_id, n_foaf))
+        foaf = cur.fetchall()
+
+        # 2) Similares por hábitos (Jaccard aprox usando nombres de hábitos)
+        #    candidatos: comparten al menos un nombre de hábito conmigo, públicos
+        cur.execute("""
+            WITH my_habits AS (
+                SELECT DISTINCT name FROM habits WHERE user_id=%s
+            ),
+            cand AS (
+                SELECT DISTINCT h.user_id AS candidate
+                FROM habits h
+                JOIN my_habits mh ON mh.name = h.name
+                JOIN profiles p   ON p.user_id = h.user_id AND p.is_public=1
+                WHERE h.user_id <> %s
+            ),
+            A AS (SELECT COUNT(*) AS ca FROM my_habits),
+            I AS (
+                SELECT h.user_id AS candidate, COUNT(*) AS inters
+                FROM habits h
+                JOIN my_habits mh ON mh.name = h.name
+                WHERE h.user_id IN (SELECT candidate FROM cand)
+                GROUP BY h.user_id
+            ),
+            B AS (
+                SELECT h.user_id AS candidate, COUNT(DISTINCT name) AS cb
+                FROM habits h
+                WHERE h.user_id IN (SELECT candidate FROM cand)
+                GROUP BY h.user_id
+            )
+            SELECT i.candidate,
+                   i.inters / (a.ca + b.cb - i.inters) AS jaccard
+            FROM I i CROSS JOIN A a
+            JOIN B b ON b.candidate = i.candidate
+            ORDER BY jaccard DESC, candidate ASC
+            LIMIT %s
+        """, (user_id, user_id, n_sim))
+        sim = cur.fetchall()
+
+        # 3) Trending: score = (amigos_count * 2) + done_days_window
+        #    - públicos, excluidos fuera
+        cur.execute("""
+            WITH friend_counts AS (
+              SELECT user_id, COUNT(*) AS fc
+              FROM friendships
+              GROUP BY user_id
+            ),
+            done30 AS (
+              SELECT h.user_id, COALESCE(SUM(CASE WHEN l.value=1 THEN 1 ELSE 0 END),0) AS done_days
+              FROM habits h
+              LEFT JOIN logs l ON l.habit_id = h.id
+                               AND l.day BETWEEN %s AND %s
+              GROUP BY h.user_id
+            )
+            SELECT u.id AS candidate,
+                   COALESCE(fc.fc,0)*2 + COALESCE(d.done_days,0) AS score
+            FROM users u
+            JOIN profiles p ON p.user_id = u.id AND p.is_public=1
+            LEFT JOIN friend_counts fc ON fc.user_id = u.id
+            LEFT JOIN done30 d        ON d.user_id = u.id
+            WHERE u.id <> %s
+            ORDER BY score DESC, u.username ASC
+            LIMIT %s
+        """, (start, today, user_id, n_trend))
+        trend = cur.fetchall()
+
+        # Combinar sin duplicados y excluyendo mis amigos / yo
+        seen = set(exclude_ids)
+        combined: List[Dict] = []
+        def push(rows):
+            for r in rows:
+                cid = r.get("candidate") or r.get("id")
+                if cid in seen: 
+                    continue
+                seen.add(cid)
+                combined.append(cid)
+                if len(combined) >= limit:
+                    break
+
+        push(foaf)
+        if len(combined) < limit:
+            push(sim)
+        if len(combined) < limit:
+            push(trend)
+
+        # 4) Relleno aleatorio de públicos
+        remaining = limit - len(combined)
+        fill = []
+        if remaining > 0:
+            # Elegir públicos random no vistos
+            cur.execute(f"""
+                SELECT u.id AS candidate
+                FROM users u 
+                JOIN profiles p ON p.user_id=u.id AND p.is_public=1
+                WHERE u.id NOT IN ({",".join(["%s"]*len(seen))})
+                ORDER BY RAND()
+                LIMIT %s
+            """, (*seen, remaining))
+            fill = cur.fetchall()
+            push(fill)
+
+        # resolver información básica de los IDs combinados
+        if not combined:
+            return {"items": []}
+
+        cur.execute(f"""
+            SELECT u.id, u.username, p.bio
+            FROM users u
+            LEFT JOIN profiles p ON p.user_id=u.id
+            WHERE u.id IN ({",".join(["%s"]*len(combined))})
+        """, tuple(combined))
+        rows = cur.fetchall()
+
+        # ordenar de acuerdo al orden de "combined"
+        info = {r["id"]: r for r in rows}
+        ordered = [info[cid] for cid in combined if cid in info]
+
+    return {
+        "window": window,
+        "mix": {"foaf": n_foaf, "similar": n_sim, "trending": n_trend, "fill": n_fill},
+        "items": ordered
+    }
+
 
 # --- Servir frontend estático ---
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="static")

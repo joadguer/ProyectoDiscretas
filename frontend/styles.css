@@ -533,3 +533,61 @@ body {
   .welcome{ grid-template-columns:1fr; text-align:center; }
   .welcome-img{ justify-self:center; max-width:260px; }
 }
+
+
+
+
+
+/* nuevos diseños agregados para la version 2 */
+.user-card{
+  border:1px solid var(--border);
+  background:var(--card);
+  border-radius:14px;
+  padding:12px;
+  box-shadow:var(--shadow);
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+}
+.user-avatar{
+  width:44px; height:44px; border-radius:12px;
+  background:linear-gradient(135deg, var(--primary), var(--highlight));
+  flex-shrink:0;
+}
+.user-meta{display:flex; flex-direction:column; gap:4px; min-width:0}
+.user-name{font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.user-bio{color:var(--muted); font-size:.92rem}
+.user-actions{margin-left:auto}
+.rank-row{
+  display:flex; align-items:center; gap:10px;
+  padding:10px; border:1px solid var(--border);
+  border-radius:12px; background: var(--bg-soft);
+}
+.rank-pos{
+  width:28px; height:28px; border-radius:8px;
+  display:grid; place-items:center; font-weight:700;
+  background: color-mix(in oklab, var(--highlight), #912626 30%);
+}
+
+
+.friend-card{
+  border:1px solid var(--border);
+  background:var(--card);
+  border-radius:14px;
+  padding:12px;
+  box-shadow:var(--shadow);
+  display:flex; gap:10px; align-items:flex-start;
+}
+.friend-avatar{
+  width:44px; height:44px; border-radius:12px;
+  background:linear-gradient(135deg, var(--primary), var(--highlight));
+  flex-shrink:0;
+}
+.friend-meta{display:flex; flex-direction:column; gap:4px; min-width:0}
+.friend-name{font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.friend-bio{color:var(--muted); font-size:.92rem}
+.friend-actions{margin-left:auto; display:flex; gap:8px}
+.input{
+  padding:10px 12px; border:1px solid var(--border); background:var(--bg-soft);
+  color:var(--text); border-radius:12px;
+}

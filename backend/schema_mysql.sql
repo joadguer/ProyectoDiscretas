@@ -1,5 +1,3 @@
--- Asegúrate de tener creada la BD:
--- CREATE DATABASE IF NOT EXISTS habitos_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 USE habitos_db;
 
@@ -47,7 +45,6 @@ CREATE TABLE IF NOT EXISTS profiles (
     ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
--- (Opcional) Índices útiles si tu versión no los crea automáticamente.
 CREATE INDEX idx_habits_user ON habits(user_id);
 CREATE INDEX idx_logs_habit ON logs(habit_id);
 -- (Opcional) Email único:

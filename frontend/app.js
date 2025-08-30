@@ -91,7 +91,7 @@ addHabitInput?.addEventListener('keydown', (e)=>{
 });
 
 // Navegación
-const pages = ['auth','home','habits','stats','profile'];
+const pages = ['auth','home','habits','stats','friends','profile'];
 
 function goto(page){
   pages.forEach(p => { const el = document.getElementById(`page-${p}`); if(el) el.hidden = p!==page; });
@@ -106,6 +106,7 @@ $('#tabs').addEventListener('click', (e)=>{
   if(page==='home') renderHome();
   if(page==='habits') listHabits();
   if(page==='stats') renderStats();
+  if(page==='friends') renderFriendsPage();
   if(page==='profile') renderProfile();
 });
 
@@ -123,24 +124,54 @@ $('.auth-tabs')?.addEventListener('click', (e)=>{
   if(!btn) return;
   setAuthView(btn.dataset.authview);
 });
-setAuthView('login'); // por defecto
+setAuthView('login');
 
-function renderHome(){
-  if(!state.user) return;
-  const name = state.profile?.first_name || state.user.username || '¡Hola!';
-  const wTitle = document.getElementById('welcome-title');
-  const wSub   = document.getElementById('welcome-sub');
-  if(wTitle) wTitle.textContent = `¡Hola, ${name}!`;
-  if(wSub)   wSub.textContent   = `Hoy es ${new Date().toLocaleDateString()} — sigue con tus hábitos 💪`;
-
-  // Botones de acción
-  document.getElementById('home-add')?.addEventListener('click', ()=> {
-    document.getElementById('addHabitBtn')?.click();
-  });
-  document.getElementById('home-gohabits')?.addEventListener('click', ()=> {
-    goto('habits'); listHabits();
-  });
+// render home v2 con recomendaciones y ranking
+async function renderHome(){
+  try{
+    const [recs, rankWindow] = await Promise.all([
+      fetchSuggested(12, 30),
+      Promise.resolve($('#rankWindow')?.value || '7')
+    ]);
+    renderRecs(recs.items || []);
+    const rk = await fetchRank(Number(rankWindow), 1, 12);
+    renderRank(rk);
+  }catch(e){
+    showToast?.(e.message,'error','No se pudo cargar Inicio');
+  }
 }
+$('#rankWindow')?.addEventListener('change', async ()=>{
+  try{
+    const rk = await fetchRank(Number($('#rankWindow').value), 1, 12);
+    renderRank(rk);
+  }catch(e){ showToast?.(e.message,'error'); }
+});
+
+
+// visibilidad del perfil
+function hydrateVisibilityForm(){
+  // Carga los valores actuales (si backend ya envía is_public/bio en profile)
+  const p = state.profile || {};
+  if($('#isPublic')) $('#isPublic').checked = !!p.is_public;
+  if($('#bio')) $('#bio').value = p.bio || '';
+}
+
+$('#pv-save')?.addEventListener('click', async ()=>{
+  if(!state.user) return;
+  const is_public = !!$('#isPublic').checked;
+  const bio = ($('#bio').value || '').slice(0,200);
+  try{
+    const resp = await api('/profile/visibility', {
+      method:'PUT',
+      body: JSON.stringify({ user_id: state.user.id, is_public, bio })
+    });
+    state.profile = Object.assign({}, state.profile||{}, resp.profile||{});
+    saveSession?.(state.user, state.profile);
+    hydrateVisibilityForm();
+    const hint = $('#pv-hint'); if(hint){ hint.textContent = 'Guardado'; setTimeout(()=> hint.textContent='', 1800); }
+    showToast?.('Preferencias actualizadas','success');
+  }catch(e){ showToast?.(e.message,'error'); }
+});
 
 
 function normalizeErrorMessage(raw){
@@ -205,26 +236,211 @@ function setTheme(mode){
 $('#themeBtn').onclick = ()=> setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');
 $('#themeBtn2').onclick = $('#themeBtn').onclick;
 
-// HTTP helper
-// async function api(path, opts={}){
-//   const headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
-//   const res = await fetch(API+path, {...opts, headers});
-//   if(!res.ok){ throw new Error(await res.text() || res.statusText); }
-//   return res.json();
-// }
+
 
 // Control UI según sesión
 function updateAuthUI(){
   document.body.setAttribute('data-auth', state.user ? 'user' : 'guest');
   if(state.user){
     renderProfile();
-    goto('habits');
-    listHabits();
-    renderStats();
+    // v1.0: ir a home
+    goto('home');
+    renderHome();
+
   }else{
     goto('auth');
     setAuthView('login');
   }
+}
+
+
+// recomendados 
+async function fetchSuggested(limit=12, window=30){
+  return api(`/friends/suggested?user_id=${state.user.id}&limit=${limit}&window=${window}`);
+}
+
+function renderRecs(items){
+  const grid = $('#recGrid'); if(!grid) return;
+  grid.innerHTML = '';
+  if(!items || items.length===0){
+    grid.innerHTML = '<div class="muted">No hay recomendaciones por ahora.</div>';
+    return;
+  }
+  items.forEach(u=>{
+    const card = document.createElement('div');
+    card.className = 'user-card';
+    card.innerHTML = `
+      <div class="user-avatar"></div>
+      <div class="user-meta">
+        <div class="user-name">@${u.username}</div>
+        <div class="user-bio">${(u.bio||'').slice(0,120)}</div>
+      </div>
+      <div class="user-actions">
+        <button class="btn" data-id="${u.id}">Agregar</button>
+      </div>
+    `;
+    card.querySelector('button').onclick = async (ev)=>{
+      const targetId = Number(ev.currentTarget.dataset.id);
+      try{
+        await api('/friends/add', {method:'POST', body: JSON.stringify({user_id: state.user.id, target_id: targetId})});
+        showToast?.('Amigo agregado','success');
+        renderHome(); // refresca recomendaciones
+      }catch(e){ showToast?.(e.message,'error'); }
+    };
+    grid.appendChild(card);
+  });
+}
+
+// friends
+async function getFriends(){
+  const res = await api(`/friends/list?user_id=${state.user.id}`);
+  return res.friends || [];
+}
+async function addFriend(targetId){
+  return api('/friends/add', {method:'POST', body: JSON.stringify({user_id: state.user.id, target_id: targetId})});
+}
+async function removeFriend(targetId){
+  return api(`/friends/remove?user_id=${state.user.id}&target_id=${targetId}`, {method:'DELETE'});
+}
+async function searchPublicUsers(q, page=1, page_size=20){
+  const res = await api(`/public/users?q=${encodeURIComponent(q||'')}&page=${page}&page_size=${page_size}`);
+  return res.items || [];
+}
+
+
+function drawFriends(list){
+  const wrap = $('#friendsList'); if(!wrap) return;
+  wrap.innerHTML = '';
+  if(!list.length){
+    wrap.innerHTML = '<div class="muted">Aún no tienes amigos. Usa el buscador para encontrar perfiles públicos.</div>';
+    return;
+  }
+  list.forEach(u=>{
+    const card = document.createElement('div');
+    card.className = 'friend-card';
+    card.innerHTML = `
+      <div class="friend-avatar"></div>
+      <div class="friend-meta">
+        <div class="friend-name">@${u.username}</div>
+        <div class="friend-bio">${(u.bio||'').slice(0,120)}</div>
+      </div>
+      <div class="friend-actions">
+        <button class="btn ghost" data-id="${u.id}">Eliminar</button>
+      </div>
+    `;
+    card.querySelector('button').onclick = async (ev)=>{
+      const id = Number(ev.currentTarget.dataset.id);
+      try{
+        await removeFriend(id);
+        showToast?.('Amigo eliminado','info');
+        renderFriendsPage();
+      }catch(e){ showToast?.(e.message,'error'); }
+    };
+    wrap.appendChild(card);
+  });
+}
+
+
+// contador de pagina principal
+async function renderFriendsPage(){
+  try{
+    // 1) lista actual
+    const friends = await getFriends();
+    drawFriends(friends);
+
+    // 2) preparar buscador (debounce)
+    const myIds = new Set(friends.map(f=>f.id));
+    const input = $('#friendsSearch');
+    let t = null;
+    input.oninput = ()=>{
+      clearTimeout(t);
+      t = setTimeout(async ()=>{
+        const q = input.value.trim();
+        if(!q){
+          $('#friendsSearchResults').innerHTML = '<div class="muted">Empieza a escribir para buscar perfiles públicos…</div>';
+          return;
+        }
+        try{
+          const results = await searchPublicUsers(q, 1, 30);
+          // Excluirme y a mis amigos
+          const filtered = results.filter(u => u.id !== state.user.id);
+          drawSearchResults(filtered, myIds);
+        }catch(e){ showToast?.(e.message,'error'); }
+      }, 250); // debounce
+    };
+
+    // placeholder inicial
+    $('#friendsSearchResults').innerHTML = '<div class="muted">Empieza a escribir para buscar perfiles públicos…</div>';
+  }catch(e){
+    console.error(e);
+    showToast?.(e.message,'error','No se pudo cargar Amigos');
+  }
+}
+
+
+function drawSearchResults(items, myFriendsIds){
+  const wrap = $('#friendsSearchResults'); if(!wrap) return;
+  wrap.innerHTML = '';
+  if(!items.length){
+    wrap.innerHTML = '<div class="muted">Sin resultados.</div>';
+    return;
+  }
+  items.forEach(u=>{
+    const isFriend = myFriendsIds.has(u.id);
+    const card = document.createElement('div');
+    card.className = 'friend-card';
+    card.innerHTML = `
+      <div class="friend-avatar"></div>
+      <div class="friend-meta">
+        <div class="friend-name">@${u.username}</div>
+        <div class="friend-bio">${(u.bio||'').slice(0,120)}</div>
+      </div>
+      <div class="friend-actions">
+        ${isFriend
+          ? '<button class="btn ghost" disabled>Ya es amigo</button>'
+          : `<button class="btn" data-add="${u.id}">Agregar</button>`}
+      </div>
+    `;
+    const btn = card.querySelector('[data-add]');
+    if(btn){
+      btn.onclick = async ()=>{
+        try{
+          await addFriend(Number(btn.dataset.add));
+          showToast?.('Amigo agregado','success');
+          renderFriendsPage();
+        }catch(e){ showToast?.(e.message,'error'); }
+      };
+    }
+    wrap.appendChild(card);
+  });
+}
+
+
+// ranking
+async function fetchRank(window=7, page=1, page_size=10){
+  return api(`/public/rank?window=${window}&page=${page}&page_size=${page_size}`);
+}
+
+function renderRank(resp){
+  const grid = $('#rankGrid'); if(!grid) return;
+  grid.innerHTML = '';
+  const items = resp?.items || [];
+  if(items.length===0){
+    grid.innerHTML = '<div class="muted">Sin datos para esta ventana.</div>'; return;
+  }
+  items.forEach((r,idx)=>{
+    const row = document.createElement('div');
+    row.className = 'rank-row';
+    row.innerHTML = `
+      <div class="rank-pos">${idx+1}</div>
+      <div class="user-avatar"></div>
+      <div style="display:flex; flex-direction:column">
+        <div class="user-name">@${r.username}</div>
+        <div class="muted">${r.done_days} días cumplidos</div>
+      </div>
+    `;
+    grid.appendChild(row);
+  });
 }
 
 
@@ -457,7 +673,7 @@ async function renderStats(){
 
 // Perfil
 function renderProfile(){
-  // Encabezado (ya lo tenías)
+  // Encabezado 
   $('#p-username').textContent = state.user?.username || 'Usuario';
   $('#p-email').textContent    = state.user?.email || 'correo@example.com';
 
@@ -477,6 +693,7 @@ function renderProfile(){
       if(isNaN(edad)) edad = '-';
     }catch(_){ edad = '-'; }
   }
+  hydrateVisibilityForm(); // carga el formulario de visibilidad
 
   extra.innerHTML = `
     <div class="profile-item">

@@ -26,24 +26,14 @@
       <button class="tab active" data-page="home">Inicio</button>
       <button class="tab" data-page="habits">Hábitos</button>
       <button class="tab" data-page="stats">Estadísticas</button>
+      <button class="tab" data-page="friends">Amigos</button>  <!-- ← NUEVO -->
       <button class="tab" data-page="profile">Perfil</button>
     </div>
 
 
-    <!-- AUTH -->
 <!-- AUTH -->
 <section id="page-auth" class="page">
   <!-- Bienvenida -->
-<div class="card welcome">
-  <div class="welcome-text">
-    <h1>Bienvenido a Hábitos</h1>
-    <p class="muted">
-      Registra tus hábitos diarios y mira tu progreso semana a semana. 
-      Inicia sesión o crea tu cuenta para comenzar.
-    </p>
-  </div>
-  <img src="assets/welcome.png" class="welcome-img" alt="Ilustración de hábitos">
-</div>
 
   <div class="auth card">
 
@@ -122,21 +112,29 @@
   </div>
 </section>
 <!-- INICIO (home) -->
+<!-- version 2 del home -->
+ <!-- HOME -->
 <section id="page-home" class="page" hidden>
-  <div class="card welcome">
-    <div class="welcome-text">
-      <h1 id="welcome-title">¡Hola!</h1>
-      <p class="muted" id="welcome-sub">
-        Registra tus hábitos diarios y revisa tu progreso semanal.
-      </p>
-      <div style="display:flex; gap:8px; margin-top:12px;">
-        <button id="home-add" class="btn primary">Agregar hábito</button>
-        <button id="home-gohabits" class="btn">Ver hábitos</button>
-      </div>
+  <div class="grid">
+    <div class="card">
+      <h3>Recomendados para ti</h3>
+      <p class="muted">Perfiles públicos basados en amigos de amigos, hábitos similares y usuarios con alta actividad.</p>
+      <div id="recGrid" class="grid" style="grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:12px"></div>
     </div>
-    <img src="assets/welcome.png" class="welcome-img" alt="Ilustración de hábitos">
+
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px">
+        <h3>Ranking</h3>
+        <select id="rankWindow" class="btn" style="padding:6px 10px">
+          <option value="7">Últimos 7 días</option>
+          <option value="30">Últimos 30 días</option>
+        </select>
+      </div>
+      <div id="rankGrid" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px"></div>
+    </div>
   </div>
 </section>
+
 
     <!-- HABITS -->
     <section id="page-habits" class="page" hidden>
@@ -149,6 +147,24 @@
     <section id="page-stats" class="page" hidden>
       <div class="grid" id="statsGrid"></div>
     </section>
+
+    <!-- FRIENDS -->
+<section id="page-friends" class="page" hidden>
+  <div class="grid">
+    <div class="card">
+      <h3>Mis amigos</h3>
+      <div id="friendsList" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px">
+        <h3>Buscar perfiles públicos</h3>
+        <input id="friendsSearch" type="search" placeholder="Busca por @usuario" class="input" style="min-width:260px" />
+      </div>
+      <div id="friendsSearchResults" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; margin-top:10px"></div>
+    </div>
+  </div>
+</section>
 
     <!-- PROFILE -->
     <section id="page-profile" class="page" hidden>
@@ -201,7 +217,24 @@
             <span id="ep-hint" class="hint"></span>
           </div>
         </div>
-
+        <!-- Visibilidad del perfil -->
+        <div class="card" style="margin-top:12px">
+          <h3>Privacidad</h3>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:8px">
+            <label class="muted" for="isPublic">Perfil público</label>
+            <input id="isPublic" type="checkbox" />
+          </div>
+          <div class="field" style="margin-top:10px">
+            <label>Bio (200 máx.)</label>
+            <textarea id="bio" rows="3" maxlength="200" placeholder="Cuéntale a otros sobre tus hábitos..."></textarea>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:8px">
+            <button id="pv-save" class="btn">Guardar</button>
+            <div id="pv-hint" class="hint"></div>
+          </div>
+        </div>
+        
+        <!-- Tema oscuro -->
         <div style="display:flex; gap:10px; align-items:center; margin-top:8px">
           <label class="muted">Tema oscuro</label>
           <button id="themeBtn2" class="btn">Alternar</button>
