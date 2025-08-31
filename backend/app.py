@@ -110,6 +110,64 @@ def public_users(
 
     return {"page": page, "page_size": page_size, "total": total, "items": items}
 
+@app.get("/stats/weekly")
+
+def stats_weekly(user_id: int = Query(...)):
+
+    today = datetime.date.today()
+
+    start = today - datetime.timedelta(days=6)
+
+    with get_conn() as con:
+
+        cur = con.cursor(dictionary=True)
+
+        cur.execute("SELECT id, name FROM habits WHERE user_id=%s", (user_id,))
+
+        habits = cur.fetchall()
+
+        items = []
+
+        for h in habits:
+
+            cur.execute(
+
+                "SELECT day, value FROM logs WHERE habit_id=%s AND day BETWEEN %s AND %s",
+
+                (h["id"], start, today)
+
+            )
+
+            vals = cur.fetchall()
+
+            day_map = {row["day"]: int(row["value"]) for row in vals}
+
+            done = 0
+
+            for i in range(7):
+
+                d = start + datetime.timedelta(days=i)
+
+                done += day_map.get(d, 0)
+
+            today_done = bool(day_map.get(today, 0))
+
+            items.append({
+
+                "habit_id": h["id"],
+
+                "habit_name": h["name"],
+
+                "done": done,
+
+                "total_days": 7,
+
+                "today_done": today_done
+
+            })
+
+        return {"today": today.isoformat(), "items": items}
+
 @app.get("/public/user/{username}")
 def public_user_detail(username: str):
     today = datetime.date.today()
