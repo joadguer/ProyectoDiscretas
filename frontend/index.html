@@ -28,7 +28,7 @@
       <button class="tab" data-page="stats">Estadísticas</button>
       <button class="tab" data-page="friends">Amigos</button>  <!-- ← NUEVO -->
       <button class="tab" data-page="profile">Perfil</button>
-      <button class="tab" data-page="myOwnPosts">Mis Posts</button>
+      <button class="tab" data-page="posts">Mis Posts</button>
 
     </div>
 
@@ -208,32 +208,21 @@
   </div>
 </div>
 
-<section id="page-ownPosts" class="page" hidden>
-  <div class="grid">
-    <div class="card">
-      <h3>Crear publicación</h3>
-      <div class="field">
-        <label>Contenido</label>
-        <textarea id="post-content" rows="3" maxlength="600" placeholder="Comparte tu avance o una reflexión..."></textarea>
-      </div>
-      <div style="display:flex; gap:8px; align-items:center">
-        <label class="muted">Visibilidad</label>
-        <select id="post-visibility" class="btn">
-          <option value="public">Pública</option>
-          <option value="friends">Solo amigos</option>
-        </select>
-        <button id="post-create" class="btn primary">Publicar</button>
-      </div>
-    </div>
 
-    <div class="card">
-      <h3>Feed</h3>
-      <div id="myFeedList" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px"></div>
-      <div style="display:flex; justify-content:center; margin-top:10px">
+<section id="page-posts" class="page" hidden>
+  <div class="card" style="position:relative">
+    <div class="card-head">
+      <h3>My Own Posts</h3>
+      <!-- <div style="display:flex; justify-content:center; margin-top:10px">
         <button id="feed-more" class="btn">Cargar más</button>
-      </div>
+      </div> -->
+    </div>
+    <div id="myPostsFeedList" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px">
+      <!-- posts por JS -->
     </div>
   </div>
+  <!-- FAB para nueva publicación debo cambiar id para que funcione con la api -->
+  <button id="fabNewPost2" class="fab" title="Nueva publicación">+</button>
 </section>
 
 

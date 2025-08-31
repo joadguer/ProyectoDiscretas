@@ -483,35 +483,61 @@ def mark_today(p: MarkToday):
         )
         return {"ok": True}
 
-@app.get("/stats/weekly")
-def stats_weekly(user_id: int = Query(...)):
-    today = datetime.date.today()
-    start = today - datetime.timedelta(days=6)
+@app.get("/posts/by_user")
+def posts_by_user(
+    author_id: int = Query(..., description="Dueño del perfil cuyos posts se listan"),
+    viewer_id: int = Query(..., description="Usuario logueado"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    require_owner: bool = Query(False),
+):
+    if require_owner and author_id != viewer_id:
+        raise HTTPException(403, "Solo puedes ver tus propias publicaciones en 'Mis Posts'.")
+
+    offset = (page - 1) * page_size
     with get_conn() as con:
         cur = con.cursor(dictionary=True)
-        cur.execute("SELECT id, name FROM habits WHERE user_id=%s", (user_id,))
-        habits = cur.fetchall()
-        items = []
-        for h in habits:
-            cur.execute(
-                "SELECT day, value FROM logs WHERE habit_id=%s AND day BETWEEN %s AND %s",
-                (h["id"], start, today)
-            )
-            vals = cur.fetchall()
-            day_map = {row["day"]: int(row["value"]) for row in vals}
-            done = 0
-            for i in range(7):
-                d = start + datetime.timedelta(days=i)
-                done += day_map.get(d, 0)
-            today_done = bool(day_map.get(today, 0))
-            items.append({
-                "habit_id": h["id"],
-                "habit_name": h["name"],
-                "done": done,
-                "total_days": 7,
-                "today_done": today_done
-            })
-        return {"today": today.isoformat(), "items": items}
+
+        # ¿existe el autor? (y si no tiene profile, trátalo como no público)
+        cur.execute("SELECT is_public FROM profiles WHERE user_id=%s", (author_id,))
+        row = cur.fetchone()
+        if row is None:
+            cur2 = con.cursor()
+            cur2.execute("SELECT 1 FROM users WHERE id=%s", (author_id,))
+            if not cur2.fetchone():
+                raise HTTPException(404, "Autor no encontrado")
+            is_public = False
+        else:
+            is_public = bool(row["is_public"])
+
+        friend = _is_friend(con, viewer_id, author_id)
+
+        if friend or viewer_id == author_id:
+            vis_sql = ""  # ve todo
+        else:
+            if not is_public:
+                # Si prefieres 403 en vez de devolver vacío, cambia por:
+                # raise HTTPException(403, "Este perfil no es público")
+                return {"items": [], "page": page, "page_size": page_size}
+            vis_sql = "AND p.visibility='public'"
+
+        cur.execute(
+            f"""
+            SELECT p.id, p.author_id, u.username, p.content, p.habit_id, p.visibility, p.created_at,
+                   (SELECT COUNT(*) FROM post_likes    pl WHERE pl.post_id = p.id) AS likes,
+                   (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = p.id) AS comments
+            FROM posts p
+            JOIN users u ON u.id = p.author_id
+            WHERE p.author_id = %s {vis_sql}
+            ORDER BY p.created_at DESC, p.id DESC
+            LIMIT %s OFFSET %s
+            """,
+            (author_id, page_size, offset),
+        )
+        items = cur.fetchall()
+
+    return {"items": items, "page": page, "page_size": page_size, "self": viewer_id == author_id}
+
 
 @app.post("/posts")
 def create_post(p: PostIn):
@@ -607,7 +633,7 @@ def posts_feed(user_id: int = Query(...), page: int = Query(1, ge=1), page_size:
             JOIN users u   ON u.id = p.author_id
             JOIN profiles pr ON pr.user_id = u.id
             WHERE
-                 (pr.is_public = 1 AND p.visibility = 'public')
+                 (pr.is_public = 1 OR p.visibility = 'public')
               OR (p.author_id = %s)
               OR (p.visibility='friends' AND EXISTS (
                     SELECT 1 FROM friendships f WHERE f.user_id=%s AND f.friend_id=p.author_id
@@ -638,38 +664,60 @@ def posts_feed(user_id: int = Query(...), page: int = Query(1, ge=1), page_size:
         """, (user_id, user_id, page_size, offset))
         return {"items": cur.fetchall(), "page": page, "page_size": page_size}
 
-# Posts de un usuario (para perfil público)
+# Posts de un usuario (para perfil público o si es amigo, o si es su propio perfil)
 @app.get("/posts/by_user")
-def posts_by_user(author_id: int = Query(...), viewer_id: int = Query(...), page: int = 1, page_size: int = 10):
-    offset = (page-1)*page_size
+def posts_by_user(
+    author_id: int = Query(..., description="Dueño del perfil cuyos posts se listan"),
+    viewer_id: int = Query(..., description="Usuario logueado"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    require_owner: bool = Query(False),
+):
+    if require_owner and author_id != viewer_id:
+        raise HTTPException(403, "Solo puedes ver tus propias publicaciones en 'Mis Posts'.")
+
+    offset = (page - 1) * page_size
     with get_conn() as con:
         cur = con.cursor(dictionary=True)
-        # visibilidad: si viewer es amigo, ve 'friends'; si no, solo 'public' y si el perfil es público.
-        # comprobamos perfil del author
+
+        # ¿existe el autor? (si no hay profile, trátalo como no público)
         cur.execute("SELECT is_public FROM profiles WHERE user_id=%s", (author_id,))
         row = cur.fetchone()
-        is_public = bool(row and row["is_public"])
-        # ¿viewer es amigo?
+        if row is None:
+            cur2 = con.cursor()
+            cur2.execute("SELECT 1 FROM users WHERE id=%s", (author_id,))
+            if not cur2.fetchone():
+                raise HTTPException(404, "Autor no encontrado")
+            is_public = False
+        else:
+            is_public = bool(row["is_public"])
+
         friend = _is_friend(con, viewer_id, author_id)
 
-        if friend or viewer_id==author_id:
+        if friend or viewer_id == author_id:
             vis_sql = ""  # ve todo
+            params = (author_id, page_size, offset)
         else:
             if not is_public:
                 return {"items": [], "page": page, "page_size": page_size}
             vis_sql = "AND p.visibility='public'"
+            params = (author_id, page_size, offset)
 
         cur.execute(f"""
             SELECT p.id, p.author_id, u.username, p.content, p.habit_id, p.visibility, p.created_at,
-                   (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id=p.id) AS likes,
-                   (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id=p.id) AS comments
+                   (SELECT COUNT(*) FROM post_likes    pl WHERE pl.post_id = p.id) AS likes,
+                   (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = p.id) AS comments
             FROM posts p
             JOIN users u ON u.id = p.author_id
-            WHERE p.author_id=%s {vis_sql}
+            WHERE p.author_id = %s {vis_sql}
             ORDER BY p.created_at DESC, p.id DESC
             LIMIT %s OFFSET %s
-        """, (author_id, page_size, offset))
-        return {"items": cur.fetchall(), "page": page, "page_size": page_size}
+        """, params)
+        items = cur.fetchall()
+
+    return {"items": items, "page": page, "page_size": page_size, "self": viewer_id == author_id}
+
+
 
 @app.get("/posts/{post_id}/comments", response_model=List[CommentOut])
 def list_comments(post_id: int, page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=50)):

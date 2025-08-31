@@ -91,7 +91,7 @@ addHabitInput?.addEventListener('keydown', (e)=>{
 });
 
 // Navegación
-const pages = ['auth','home','habits','stats','friends','community','profile'];
+const pages = ['auth','home','habits','stats','friends','posts','profile'];
 
 function goto(page){
   pages.forEach(p => { const el = document.getElementById(`page-${p}`); if(el) el.hidden = p!==page; });
@@ -108,7 +108,7 @@ $('#tabs').addEventListener('click', (e)=>{
   if(page==='stats') renderStats();
   if(page==='friends') renderFriendsPage();
   if(page==='profile') renderProfile();
-  if(page==='community') renderCommunity();
+  if(page==='posts') renderPosts();
 });
 
 // Crear post
@@ -136,14 +136,86 @@ async function loadFeed(clear=false){
     const list = res.items || [];
     const box = $('#feedList'); if(!box) return;
     if(clear) box.innerHTML = '';
-    list.forEach(drawPostCard);
+    list.forEach(p => drawPostCard(p, box));  // <- aquí
     if(list.length===0 && clear){ box.innerHTML='<div class="muted">Sin publicaciones aún.</div>'; }
     feedPage++;
   }catch(e){ showToast?.(e.message,'error'); }
 }
+
 $('#feed-more')?.addEventListener('click', ()=> loadFeed(false));
 
-function drawPostCard(p){
+async function loadPosts(clear=false){
+  try{
+    const res = await api(`/posts/by_user?author_id=${state.user.id}&viewer_id=${state.user.id}&require_owner=1&page=1&page_size=10`);
+    const list = res.items || [];
+    const box = $('#myPostsFeedList'); if(!box) return;
+    if(clear) box.innerHTML = '';
+    list.forEach(p => drawPostCard(p, box));  // <- aquí
+    if(list.length===0 && clear){ box.innerHTML='<div class="muted">Sin publicaciones aún.</div>'; }
+  }catch(e){ showToast?.(e.message,'error'); }
+}
+
+$('#myPostsFeedList')?.addEventListener('click', async (e) => {
+  const likeBtn = e.target.closest('[data-like]');
+  const cmtBtn  = e.target.closest('[data-cmt]');
+  const sendBtn = e.target.closest('[data-sendc]');
+  if (!likeBtn && !cmtBtn && !sendBtn) return;
+
+  if (likeBtn) {
+    const postId = Number(likeBtn.dataset.like);
+    await onToggleLike(postId, likeBtn);
+    return;
+  }
+
+  if (cmtBtn) {
+    const postId = Number(cmtBtn.dataset.cmt);
+    const box = document.getElementById(`cbox-${postId}`);
+    box.style.display = box.style.display==='none' ? 'block' : 'none';
+    if(box.style.display==='block'){ loadComments(postId); }
+    return;
+  }
+
+  if (sendBtn) {
+    const postId = Number(sendBtn.dataset.sendc);
+    const inp = document.getElementById(`cinput-${postId}`);
+    const text = (inp.value||'').trim(); if(!text) return;
+    try{
+      await api(`/posts/${postId}/comments`, {method:'POST', body: JSON.stringify({user_id: state.user.id, content: text})});
+      inp.value=''; loadComments(postId);
+    }catch(e){ showToast?.(e.message,'error'); }
+  }
+});
+
+
+// Abre el mismo modal
+document.addEventListener("DOMContentLoaded", () => {
+  const fab1 = document.getElementById("fabNewPost");
+  const fab2 = document.getElementById("fabNewPost2");
+
+  if (fab1) fab1.addEventListener("click", openPostModal);
+  if (fab2) fab2.addEventListener("click", openPostModal);
+});
+
+
+// Cuando publicas desde el modal, además de refrescar el feed,
+// refresca "Mis Posts" si esa pestaña está visible.
+$('#post-submit')?.addEventListener('click', async ()=>{
+  const content = $('#post-content').value.trim();
+  const visibility = $('#post-visibility').value;
+  if(!content){ showToast('Escribe algo','error'); return; }
+  try{
+    await api('/posts', {method:'POST', body: JSON.stringify({
+      author_id: state.user.id, content, visibility
+    })});
+    closePostModal();
+    showToast('Publicado','success');
+    renderFeed(); // refresca Home
+    if (!$('#page-posts').hidden) renderPosts(); // <- refresca Mis Posts si estoy ahí
+  }catch(e){ showToast(e.message,'error'); }
+});
+
+
+function drawPostCard(p, targetEl){
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `
@@ -154,8 +226,8 @@ function drawPostCard(p){
         <div class="muted" style="font-size:.9rem">${new Date(p.created_at).toLocaleString()}</div>
         <div style="margin-top:6px; white-space:pre-wrap">${p.content}</div>
         <div style="display:flex; gap:8px; align-items:center; margin-top:8px">
-          <button class="btn" data-like="${p.id}">❤️ ${p.likes}</button>
-          <button class="btn ghost" data-cmt="${p.id}">💬 ${p.comments}</button>
+          <button class="btn" data-like="${p.id}">❤️ ${p.likes ?? 0}</button>
+          <button class="btn ghost" data-cmt="${p.id}">💬 ${p.comments ?? 0}</button>
         </div>
         <div id="cbox-${p.id}" style="display:none; margin-top:8px">
           <div style="display:flex; gap:6px">
@@ -167,31 +239,10 @@ function drawPostCard(p){
       </div>
     </div>
   `;
-  // like
-  card.querySelector(`[data-like="${p.id}"]`).onclick = async ()=>{
-    try{
-      await api(`/posts/${p.id}/like?user_id=${state.user.id}`, {method:'POST'});
-      showToast?.('Me gusta','success');
-      feedPage = 1; loadFeed(true);
-    }catch(e){ showToast?.(e.message,'error'); }
-  };
-  // abrir comentarios
-  card.querySelector(`[data-cmt="${p.id}"]`).onclick = async ()=>{
-    const box = document.getElementById(`cbox-${p.id}`);
-    box.style.display = box.style.display==='none' ? 'block' : 'none';
-    if(box.style.display==='block'){ loadComments(p.id); }
-  };
-  // enviar comentario
-  card.querySelector(`[data-sendc="${p.id}"]`).onclick = async ()=>{
-    const inp = document.getElementById(`cinput-${p.id}`);
-    const text = (inp.value||'').trim(); if(!text) return;
-    try{
-      await api(`/posts/${p.id}/comments`, {method:'POST', body: JSON.stringify({user_id: state.user.id, content: text})});
-      inp.value=''; loadComments(p.id);
-    }catch(e){ showToast?.(e.message,'error'); }
-  };
-  $('#feedList').appendChild(card);
+  targetEl.appendChild(card);
 }
+
+
 async function loadComments(postId){
   try{
     const res = await api(`/posts/${postId}/comments?page=1&page_size=50`);
@@ -206,7 +257,7 @@ async function loadComments(postId){
   }catch(e){ showToast?.(e.message,'error'); }
 }
 
-function renderCommunity(){ feedPage=1; loadFeed(true); }
+function renderPosts(){ postsPage=1; loadPosts(true); }
 
 // ---- Switch entre Login y Signup ----
 function setAuthView(view){ // 'login' | 'signup'
@@ -223,20 +274,6 @@ $('.auth-tabs')?.addEventListener('click', (e)=>{
 });
 setAuthView('login');
 
-// render home v2 con recomendaciones y ranking
-// async function renderHome(){
-//   try{
-//     const [recs, rankWindow] = await Promise.all([
-//       fetchSuggested(12, 30),
-//       Promise.resolve($('#rankWindow')?.value || '7')
-//     ]);
-//     renderRecs(recs.items || []);
-//     const rk = await fetchRank(Number(rankWindow), 1, 12);
-//     renderRank(rk);
-//   }catch(e){
-//     showToast?.(e.message,'error','No se pudo cargar Inicio');
-//   }
-// }
 
 
 // home version 3 que incluye recomendaciones, ranking y feedPage
@@ -244,14 +281,6 @@ async function renderHome(){
   if(!state.user) return;
   await Promise.all([renderRecommendations(), renderRanking(), renderFeed()]);
 }
-
-// revisar si lo necesito ahora que tengo otro render para version 3
-// $('#rankWindow')?.addEventListener('change', async ()=>{
-//   try{
-//     const rk = await fetchRank(Number($('#rankWindow').value), 1, 12);
-//     renderRank(rk);
-//   }catch(e){ showToast?.(e.message,'error'); }
-// });
 
 
 // version nueva Recomendaciones → /friends/suggested?user_id=&limit=&window=
@@ -328,10 +357,6 @@ async function renderRecommendations() {
   }
 }
 
-
-
-
-
 // Ranking → /public/rank?window=7&page=1&page_size=12
 let rankLoading = false;
 let rankAbortCtrl = null;
@@ -360,7 +385,7 @@ async function renderRanking() {
       unique.push(r);
     }
 
-    // Si hay menos de 10, NO rellenes con repetidos. Simplemente muestra los que hay.
+    // Si hay menos de 10. Simplemente muestra los que hay.
     const top = unique.slice(0, 10);
 
     list.innerHTML = '';
@@ -394,7 +419,6 @@ async function renderRanking() {
 
 
 
-// ===== FEED v2 (likes + comentarios) =====
 // ===== FEED v2 (Home) =====
 let feedPage = 1;
 let feedLoading = false;
@@ -594,7 +618,7 @@ const postModal = $('#postModal');
 const openPostModal = ()=>{ postModal.classList.add('open'); postModal.setAttribute('aria-hidden','false'); $('#post-content').value=''; };
 const closePostModal = ()=>{ postModal.classList.remove('open'); postModal.setAttribute('aria-hidden','true'); };
 
-$('#fabNewPost')?.addEventListener('click', openPostModal);
+// $('#fabNewPost')?.addEventListener('click', openPostModal);
 $('#post-cancel')?.addEventListener('click', closePostModal);
 postModal?.addEventListener('click', (e)=>{ if(e.target.id==='postModal') closePostModal(); });
 
@@ -735,39 +759,6 @@ function updateAuthUI(){
 async function fetchSuggested(limit=12, window=30){
   return api(`/friends/suggested?user_id=${state.user.id}&limit=${limit}&window=${window}`);
 }
-
-// ya no esta en uso
-// function renderRecs(items){
-//   const grid = $('#recGrid'); if(!grid) return;
-//   grid.innerHTML = '';
-//   if(!items || items.length===0){
-//     grid.innerHTML = '<div class="muted">No hay recomendaciones por ahora.</div>';
-//     return;
-//   }
-//   items.forEach(u=>{
-//     const card = document.createElement('div');
-//     card.className = 'user-card';
-//     card.innerHTML = `
-//       <div class="user-avatar"></div>
-//       <div class="user-meta">
-//         <div class="user-name">@${u.username}</div>
-//         <div class="user-bio">${(u.bio||'').slice(0,120)}</div>
-//       </div>
-//       <div class="user-actions">
-//         <button class="btn" data-id="${u.id}">Agregar</button>
-//       </div>
-//     `;
-//     card.querySelector('button').onclick = async (ev)=>{
-//       const targetId = Number(ev.currentTarget.dataset.id);
-//       try{
-//         await api('/friends/add', {method:'POST', body: JSON.stringify({user_id: state.user.id, target_id: targetId})});
-//         showToast?.('Amigo agregado','success');
-//         renderHome(); // refresca recomendaciones
-//       }catch(e){ showToast?.(e.message,'error'); }
-//     };
-//     grid.appendChild(card);
-//   });
-// }
 
 // friends
 async function getFriends(){
