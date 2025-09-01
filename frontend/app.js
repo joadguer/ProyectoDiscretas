@@ -348,6 +348,20 @@ async function renderRecommendations() {
         </div>
       `;
       frag.appendChild(card);
+      // Activar botón de agregar amigo
+      
+      const addBtn = card.querySelector('[data-act="add"]');
+      if (addBtn) {
+        addBtn.onclick = async () => {
+          try {
+            await addFriend(Number(addBtn.dataset.id));
+            showToast?.('Amigo agregado','success');
+            renderHome(); // Refresca la vista de inicio
+            } catch(e) {
+              showToast?.(e.message,'error');
+            }
+          };
+        }
     });
     wrap.appendChild(frag);
 
