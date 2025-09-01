@@ -18,6 +18,37 @@
         <button id="logoutBtn" class="btn">Salir</button>
       </div>
     </div>
+    <style>
+  #postModal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #postModal .sheet {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    width: 100%;
+    max-width: 500px;
+    z-index: 10000;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+  }
+
+  #myPostsFeedList {
+    overflow-y: auto;
+    max-height: calc(100vh - 300px); /* da espacio visual */
+    padding-bottom: 3rem;
+  }
+  #postModal[aria-hidden="true"] {
+  display: none;
+}
+</style>
+
   </header>
 
   <main class="container">

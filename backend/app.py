@@ -1025,9 +1025,9 @@ def friends_suggested(user_id: int = Query(...), limit: int = 20, window: int = 
         "items": ordered
     }
     @app.get("/stats/weekly")
-def stats_weekly(user_id: int = Query(...)):
-    today = datetime.date.today()
-    start = today - datetime.timedelta(days=6)
+    def stats_weekly(user_id: int = Query(...)):
+        today = datetime.date.today()
+        start = today - datetime.timedelta(days=6)
 
     with get_conn() as con:
         cur = con.cursor(dictionary=True)
