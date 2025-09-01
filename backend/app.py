@@ -1024,7 +1024,38 @@ def friends_suggested(user_id: int = Query(...), limit: int = 20, window: int = 
         "mix": {"foaf": n_foaf, "similar": n_sim, "trending": n_trend, "fill": n_fill},
         "items": ordered
     }
+    @app.get("/stats/weekly")
+def stats_weekly(user_id: int = Query(...)):
+    today = datetime.date.today()
+    start = today - datetime.timedelta(days=6)
 
+    with get_conn() as con:
+        cur = con.cursor(dictionary=True)
+        cur.execute("SELECT id, name FROM habits WHERE user_id=%s", (user_id,))
+        habits = cur.fetchall()
+
+        items = []
+        for h in habits:
+            cur.execute(
+                "SELECT day, value FROM logs WHERE habit_id=%s AND day BETWEEN %s AND %s",
+                (h["id"], start, today)
+            )
+            vals = cur.fetchall()
+            day_map = {row["day"]: int(row["value"]) for row in vals}
+
+            done = sum(day_map.get(start + datetime.timedelta(days=i), 0) for i in range(7))
+            today_done = bool(day_map.get(today, 0))
+
+            items.append({
+                "habit_id": h["id"],
+                "habit_name": h["name"],
+                "done": done,
+                "total_days": 7,
+                "today_done": today_done
+            })
+            
+
+    return {"today": today.isoformat(), "items": items}
 
 # --- Servir frontend estático ---
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="static")
