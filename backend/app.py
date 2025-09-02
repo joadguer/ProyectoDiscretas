@@ -290,7 +290,7 @@ class CommentIn(BaseModel):
 class CommentOut(BaseModel):
     id: int
     content: str
-    created_at: datetime.datetime
+    created_at: datetime.datetime #debe ser datetime porque si uso str me da error
     username: str
 
 # por si decido agregarle reacciones

@@ -197,23 +197,38 @@
     </section>
 
     <!-- FRIENDS -->
-<section id="page-friends" class="page" hidden>
-  <div class="grid">
-    <div class="card">
-      <h3>Mis amigos</h3>
-      <div id="friendsList" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px"></div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px">
-        <h3>Buscar perfiles públicos</h3>
-        <input id="friendsSearch" type="search" placeholder="Busca por @usuario" class="input" style="min-width:260px" />
+    <section id="page-friends" class="page">
+      <div class="search-friends"
+           style="display:flex; gap:16px; align-items:flex-start;">
+           
+        <!-- COLUMNA PRINCIPAL -->
+        <div class="friends-main" style="flex:1 1 auto; min-width:0;">
+          <div class="card" style="position:relative;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+              <h3>Buscar perfiles públicos</h3>
+              <input id="friendsSearch" type="search" placeholder="Busca por @usuario"
+                     class="input" style="min-width:260px" />
+            </div>
+    
+            <div id="friendsSearchResults"
+                 style="display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; margin-top:10px;"></div>
+          </div>
+        </div>
+    
+        <!-- ASIDE A LA DERECHA -->
+        <aside class="home-aside" style="width:320px; flex:0 0 320px;">
+          <div class="card" style="position:sticky; top:16px;">
+            <div class="card-head" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>Mis amigos</h3>
+            </div>
+            <div id="friendsList"
+                 style="display:grid; grid-template-columns:1fr; gap:12px;"></div>
+          </div>
+        </aside>
       </div>
-      <div id="friendsSearchResults" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; margin-top:10px"></div>
-    </div>
-  </div>
-</section>
-
+    </section>
+    
+    
     <!-- PROFILE -->
     <section id="page-profile" class="page" hidden>
       <div class="card" style="display:flex; gap:14px; align-items:center">
