@@ -93,7 +93,7 @@ addHabitInput?.addEventListener('keydown', (e)=>{
 });
 
 // Navegación
-const pages = ['auth','home','habits','stats','friends','posts','profile'];
+const pages = ['auth','home','habits','stats','friends','posts','profile', 'view'];
 
 function goto(page){
   pages.forEach(p => { const el = document.getElementById(`page-${p}`); if(el) el.hidden = p!==page; });
@@ -129,6 +129,147 @@ $('#post-create')?.addEventListener('click', async ()=>{
   }catch(e){ showToast?.(e.message,'error'); }
 });
 
+
+/* codigo para ver perfil de alguien que aparecio en recomendados */
+// ---- Perfil público (página "view") ----
+const viewState = { authorId:null, username:null, page:1, pageSize:6, loading:false };
+
+function openView(){
+  goto('view');
+}
+function closeView(){
+  // volver a Inicio (o a la última vista que prefieras)
+  goto(state.user ? 'habits' : 'auth');
+  // limpia estado de la página
+  viewState.authorId = null;
+  viewState.username = null;
+  viewState.page = 1;
+  viewState.loading = false;
+  const p = $('#view-posts'); if(p) p.innerHTML = '';
+  $('#view-more')?.style && ($('#view-more').style.display = 'none');
+}
+
+// Botón “Volver”
+$('#viewBackBtn')?.addEventListener('click', closeView);
+
+// Cargar más
+$('#view-load')?.addEventListener('click', ()=>{
+  viewState.page += 1;
+  loadViewPosts();
+});
+
+// Clics “Ver” desde recomendaciones/búsquedas (listener global)
+document.addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-act="visit"]');
+  if(!btn) return;
+  const username = btn.dataset.username;
+  if(!username) return;
+  showProfilePage(username);
+});
+
+// Ir a la página de perfil por username
+async function showProfilePage(username){
+  if(!state.user?.id){ showToast?.('Inicia sesión para ver perfiles','info'); return; }
+
+  // Prepara UI
+  openView();
+  $('#view-username').textContent = '@' + username;
+  $('#view-bio').textContent = 'Cargando…';
+  $('#view-meta').textContent = '';
+  $('#view-posts').innerHTML = '<div class="muted">Cargando…</div>';
+  $('#view-more').style.display = 'none';
+  $('#view-summary').textContent = '';
+
+  try{
+    const info = await api(`/public/user/${encodeURIComponent(username)}`);
+    viewState.username = info?.user?.username || username;
+    viewState.authorId = info?.user?.id;
+    viewState.page = 1;
+
+    $('#view-username').textContent = '@' + viewState.username;
+    $('#view-bio').textContent = info?.user?.bio || '—';
+
+    const s = info?.summary || {};
+    $('#view-meta').textContent = `Ventana: ${s.window_days ?? 7} días — Hábitos: ${s.habits_count ?? 0} — Cumplidos: ${s.done_days ?? 0}`;
+    $('#view-summary').innerHTML = `
+      <div>Hábitos: <strong>${s.habits_count ?? 0}</strong></div>
+      <div>Últimos ${s.window_days ?? 7} días cumplidos: <strong>${s.done_days ?? 0}</strong></div>
+      <div class="muted" style="margin-top:6px">${(s.range?.start||'—')} → ${(s.range?.end||'—')}</div>
+    `;
+
+    // botón agregar amigo
+    $('#view-add-friend')?.addEventListener('click', async ()=>{
+      try{
+        await addFriend(viewState.authorId);
+        showToast?.('Amigo agregado','success');
+      }catch(e){ showToast?.(e.message,'error'); }
+    });
+
+    // carga posts
+    $('#view-posts').innerHTML = '';
+    await loadViewPosts();
+
+  }catch(e){
+    const msg = (e && e.message) ? e.message : '';
+    if (/403/.test(msg) || /no es público/i.test(msg)){
+      $('#view-bio').textContent = 'Este perfil no es público.';
+      $('#view-posts').innerHTML = '<div class="muted">Sin publicaciones visibles.</div>';
+    } else if (/404/.test(msg) || /no encontrado/i.test(msg)){
+      $('#view-bio').textContent = 'Usuario no encontrado.';
+      $('#view-posts').innerHTML = '';
+    } else {
+      $('#view-bio').textContent = 'Ocurrió un error.';
+      showToast?.(msg || 'Error cargando perfil','error');
+    }
+  }
+}
+
+// Cargar posts de la página “view”
+async function loadViewPosts(){
+  if(!viewState.authorId || viewState.loading) return;
+  viewState.loading = true;
+
+  try{
+    const url = `/posts/by_user?author_id=${viewState.authorId}&viewer_id=${state.user.id}&page=${viewState.page}&page_size=${viewState.pageSize}`;
+    const data = await api(url);
+    const items = Array.isArray(data?.items) ? data.items : [];
+
+    if(viewState.page===1 && items.length===0){
+      $('#view-posts').innerHTML = '<div class="muted">No hay publicaciones disponibles.</div>';
+    }else{
+      const wrap = $('#view-posts');
+      for(const p of items){
+        const el = document.createElement('div');
+        el.className = 'card';
+        const author = p.username || 'desconocido';
+        const dateStr = new Date(p.created_at).toLocaleString();
+        el.innerHTML = `
+          <div class="row" style="align-items:center;gap:10px">
+            <div class="avatar" style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#a2c,#fd6)"></div>
+            <div>
+              <div class="muted">@${escapeHtml(author)}</div>
+              <div class="muted" style="font-size:12px">${escapeHtml(dateStr)}</div>
+            </div>
+          </div>
+          <div style="margin-top:8px">${escapeHtml(p.content || p.body || '')}</div>
+          <div class="muted" style="margin-top:8px;font-size:12px">
+            ${(p.visibility === 'friends') ? '👥 Solo amigos' : '🌐 Público'} · ❤️ ${p.likes ?? 0} · 💬 ${p.comments ?? 0}
+          </div>
+        `;
+        wrap.appendChild(el);
+      }
+    }
+    // paginación
+    $('#view-more').style.display = (items.length === viewState.pageSize) ? 'flex' : 'none';
+
+  }catch(e){
+    showToast?.(e.message || 'Error al cargar publicaciones','error');
+  }finally{
+    viewState.loading = false;
+  }
+}
+
+/* fin */
 
 // Feed
 // let feedPage = 1;
@@ -1282,6 +1423,9 @@ function renderProfile(){
     </div>
   `;
 }
+
+
+/* ver perfiles */
 
 
 (function tryRestoreSession(){

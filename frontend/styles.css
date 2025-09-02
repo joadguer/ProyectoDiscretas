@@ -699,3 +699,44 @@ body {
 .btn-like.is-liked { transform: scale(1.02); filter: saturate(1.15); }
 .comment { padding:6px 0; border-bottom:1px dashed var(--border-color); }
 .comment:last-child { border-bottom:none; }
+
+/* Márgenes generales en toda la página de perfil */
+.view-page {
+  padding: 40px 20px;  /* margen superior/inferior y laterales */
+}
+
+/* Encabezado de perfil */
+.view-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;   /* más espacio debajo del encabezado */
+  margin-top: 20px;      /* más espacio arriba */
+}
+
+/* Info de usuario */
+.view-head-info {
+  padding: 8px;
+  margin: 20px 0;       /* margen vertical */
+}
+
+/* Contenedor de cuerpo */
+.view-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;            /* más espacio entre feed y resumen */
+}
+
+/* Publicaciones (lado izquierdo) */
+.view-left {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;            /* separación entre publicaciones */
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .view-body {
+    grid-template-columns: 1fr;
+  }
+}

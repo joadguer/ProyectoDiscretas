@@ -319,6 +319,45 @@
       </div>
     </div>
   </div>
+  
+<!-- PERFIL PÚBLICO (página oculta: no está en el menú) -->
+<section id="page-view" class="page" hidden>
+  <div class="view-header">
+    <button id="viewBackBtn" class="btn ghost">← Volver</button>
+    <div class="view-head-info">
+      <div id="view-username" class="pv-username">@usuario</div>
+      <div id="view-bio" class="pv-bio muted">—</div>
+      <div id="view-meta" class="pv-meta muted"></div>
+    </div>
+  </div>
+
+  <div class="view-body">
+    <!-- columna izquierda: feed del usuario -->
+    <div class="view-left">
+      <h3 style="margin:0 0 10px">Publicaciones</h3>
+      <div id="view-posts" class="stack gap-8"></div>
+      <div id="view-more" style="display:flex;justify-content:center;margin-top:12px">
+        <button class="btn ghost" id="view-load">Cargar más</button>
+      </div>
+    </div>
+
+    <!-- columna derecha: resumen/perfil -->
+    <aside class="view-right">
+      <div class="card">
+        <h3>Resumen</h3>
+        <div id="view-summary" class="muted"></div>
+      </div>
+      <!-- <div class="card" style="margin-top:12px">
+        <h3>Acciones</h3>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <button id="view-add-friend" class="btn primary">Agregar amigo</button>
+          <button id="view-open-chat" class="btn">Mensaje</button>
+        </div>
+      </div> -->
+    </aside>
+  </div>
+</section>
+
 
 <!-- Modal: crear publicación -->
 <div id="postModal" class="modal" aria-hidden="true">

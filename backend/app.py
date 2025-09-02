@@ -541,60 +541,60 @@ def mark_today(p: MarkToday):
         )
         return {"ok": True}
 
-@app.get("/posts/by_user")
-def posts_by_user(
-    author_id: int = Query(..., description="Dueño del perfil cuyos posts se listan"),
-    viewer_id: int = Query(..., description="Usuario logueado"),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=50),
-    require_owner: bool = Query(False),
-):
-    if require_owner and author_id != viewer_id:
-        raise HTTPException(403, "Solo puedes ver tus propias publicaciones en 'Mis Posts'.")
+# @app.get("/posts/by_user")
+# def posts_by_user(
+#     author_id: int = Query(..., description="Dueño del perfil cuyos posts se listan"),
+#     viewer_id: int = Query(..., description="Usuario logueado"),
+#     page: int = Query(1, ge=1),
+#     page_size: int = Query(10, ge=1, le=50),
+#     require_owner: bool = Query(False),
+# ):
+#     if require_owner and author_id != viewer_id:
+#         raise HTTPException(403, "Solo puedes ver tus propias publicaciones en 'Mis Posts'.")
 
-    offset = (page - 1) * page_size
-    with get_conn() as con:
-        cur = con.cursor(dictionary=True)
+#     offset = (page - 1) * page_size
+#     with get_conn() as con:
+#         cur = con.cursor(dictionary=True)
 
-        # ¿existe el autor? (y si no tiene profile, trátalo como no público)
-        cur.execute("SELECT is_public FROM profiles WHERE user_id=%s", (author_id,))
-        row = cur.fetchone()
-        if row is None:
-            cur2 = con.cursor()
-            cur2.execute("SELECT 1 FROM users WHERE id=%s", (author_id,))
-            if not cur2.fetchone():
-                raise HTTPException(404, "Autor no encontrado")
-            is_public = False
-        else:
-            is_public = bool(row["is_public"])
+#         # ¿existe el autor? (y si no tiene profile, trátalo como no público)
+#         cur.execute("SELECT is_public FROM profiles WHERE user_id=%s", (author_id,))
+#         row = cur.fetchone()
+#         if row is None:
+#             cur2 = con.cursor()
+#             cur2.execute("SELECT 1 FROM users WHERE id=%s", (author_id,))
+#             if not cur2.fetchone():
+#                 raise HTTPException(404, "Autor no encontrado")
+#             is_public = False
+#         else:
+#             is_public = bool(row["is_public"])
 
-        friend = _is_friend(con, viewer_id, author_id)
+#         friend = _is_friend(con, viewer_id, author_id)
 
-        if friend or viewer_id == author_id:
-            vis_sql = ""  # ve todo
-        else:
-            if not is_public:
-                # Si prefieres 403 en vez de devolver vacío, cambia por:
-                # raise HTTPException(403, "Este perfil no es público")
-                return {"items": [], "page": page, "page_size": page_size}
-            vis_sql = "AND p.visibility='public'"
+#         if friend or viewer_id == author_id:
+#             vis_sql = ""  # ve todo
+#         else:
+#             if not is_public:
+#                 # Si prefieres 403 en vez de devolver vacío, cambia por:
+#                 # raise HTTPException(403, "Este perfil no es público")
+#                 return {"items": [], "page": page, "page_size": page_size}
+#             vis_sql = "AND p.visibility='public'"
 
-        cur.execute(
-            f"""
-            SELECT p.id, p.author_id, u.username, p.content, p.habit_id, p.visibility, p.created_at,
-                   (SELECT COUNT(*) FROM post_likes    pl WHERE pl.post_id = p.id) AS likes,
-                   (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = p.id) AS comments
-            FROM posts p
-            JOIN users u ON u.id = p.author_id
-            WHERE p.author_id = %s {vis_sql}
-            ORDER BY p.created_at DESC, p.id DESC
-            LIMIT %s OFFSET %s
-            """,
-            (author_id, page_size, offset),
-        )
-        items = cur.fetchall()
+#         cur.execute(
+#             f"""
+#             SELECT p.id, p.author_id, u.username, p.content, p.habit_id, p.visibility, p.created_at,
+#                    (SELECT COUNT(*) FROM post_likes    pl WHERE pl.post_id = p.id) AS likes,
+#                    (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = p.id) AS comments
+#             FROM posts p
+#             JOIN users u ON u.id = p.author_id
+#             WHERE p.author_id = %s {vis_sql}
+#             ORDER BY p.created_at DESC, p.id DESC
+#             LIMIT %s OFFSET %s
+#             """,
+#             (author_id, page_size, offset),
+#         )
+#         items = cur.fetchall()
 
-    return {"items": items, "page": page, "page_size": page_size, "self": viewer_id == author_id}
+#     return {"items": items, "page": page, "page_size": page_size, "self": viewer_id == author_id}
 
 
 @app.post("/posts")
@@ -1024,10 +1024,11 @@ def friends_suggested(user_id: int = Query(...), limit: int = 20, window: int = 
         "mix": {"foaf": n_foaf, "similar": n_sim, "trending": n_trend, "fill": n_fill},
         "items": ordered
     }
-    @app.get("/stats/weekly")
-    def stats_weekly(user_id: int = Query(...)):
-        today = datetime.date.today()
-        start = today - datetime.timedelta(days=6)
+
+@app.get("/stats/weekly")
+def stats_weekly(user_id: int = Query(...)):
+    today = datetime.date.today()
+    start = today - datetime.timedelta(days=6)
 
     with get_conn() as con:
         cur = con.cursor(dictionary=True)
