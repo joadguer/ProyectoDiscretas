@@ -7,9 +7,10 @@
   <link rel="stylesheet" href="./styles.css?v=2">
 </head>
 <!-- Toasts -->
-<div id="toast-wrap" aria-live="polite" aria-atomic="true"></div>
 
 <body data-auth="guest">
+  <div id="toast-wrap" aria-live="polite" aria-atomic="true"></div>
+
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand"><span class="dot"></span> Hábitos</div>
@@ -18,6 +19,7 @@
         <button id="logoutBtn" class="btn">Salir</button>
       </div>
     </div>
+
   </header>
 
   <main class="container">
@@ -163,27 +165,6 @@
 </section>
 
 
-<!-- Modal: crear publicación -->
-<div id="postModal" class="modal" aria-hidden="true">
-  <div class="sheet">
-    <h3>Nueva publicación</h3>
-    <div class="field">
-      <label>Contenido</label>
-      <textarea id="post-content" rows="4" placeholder="¿Qué quieres compartir hoy?"></textarea>
-    </div>
-    <div class="field">
-      <label>Visibilidad</label>
-      <select id="post-visibility">
-        <option value="public">Pública</option>
-        <option value="friends">Solo amigos</option>
-      </select>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button id="post-cancel" class="btn">Cancelar</button>
-      <button id="post-submit" class="btn primary">Publicar</button>
-    </div>
-  </div>
-</div>
 
 
 <section id="page-posts" class="page" hidden>
@@ -339,6 +320,27 @@
     </div>
   </div>
 
+<!-- Modal: crear publicación -->
+<div id="postModal" class="modal" aria-hidden="true">
+  <div class="sheet">
+    <h3>Nueva publicación</h3>
+    <div class="field">
+      <label>Contenido</label>
+      <textarea id="post-content" rows="4" placeholder="¿Qué quieres compartir hoy?"></textarea>
+    </div>
+    <div class="field">
+      <label>Visibilidad</label>
+      <select id="post-visibility">
+        <option value="public">Pública</option>
+        <option value="friends">Solo amigos</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="post-cancel" class="btn">Cancelar</button>
+      <button id="post-submit" class="btn primary">Publicar</button>
+    </div>
+  </div>
+</div>
   <script>
     /* Si sirves el frontend desde el backend, deja vacío.
        Si los separas, pon ej: window.API_BASE = 'http://localhost:8000' */
