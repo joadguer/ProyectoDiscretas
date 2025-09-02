@@ -13,6 +13,8 @@ const state = { user: null, profile: null, habits: [] };
 const SESSION_KEY = 'habits_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 horas
 
+let feedRendering = false;
+
 function saveSession(user, profile){
   const payload = { user, profile, t: Date.now() };
   localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
@@ -143,8 +145,14 @@ async function loadFeed(clear=false){
 }
 
 $('#feed-more')?.addEventListener('click', ()=> loadFeed(false));
-
+let loadingPosts = false;
 async function loadPosts(clear=false){
+  if (loadingPosts) {
+    console.warn('Ya se está cargando. Cancelado.');
+    return;
+  }
+  console.log('Ejecutando loadPosts, clear=', clear);
+  loadingPosts = true;
   try{
     const res = await api(`/posts/by_user?author_id=${state.user.id}&viewer_id=${state.user.id}&require_owner=1&page=1&page_size=10`);
     const list = res.items || [];
@@ -152,7 +160,12 @@ async function loadPosts(clear=false){
     if(clear) box.innerHTML = '';
     list.forEach(p => drawPostCard(p, box));  // <- aquí
     if(list.length===0 && clear){ box.innerHTML='<div class="muted">Sin publicaciones aún.</div>'; }
-  }catch(e){ showToast?.(e.message,'error'); }
+  } catch(e) {
+    showToast?.(e.message, 'error');
+  } finally {
+    loadingPosts = false;
+  }
+
 }
 
 $('#myPostsFeedList')?.addEventListener('click', async (e) => {
@@ -199,24 +212,58 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Cuando publicas desde el modal, además de refrescar el feed,
 // refresca "Mis Posts" si esa pestaña está visible.
-$('#post-submit')?.addEventListener('click', async ()=>{
-  const content = $('#post-content').value.trim();
+$('#post-submit')?.addEventListener('click', async () => {
+  const contentEl = $('#post-content');
+  const content = contentEl.value.trim();
   const visibility = $('#post-visibility').value;
-  if(!content){ showToast('Escribe algo','error'); return; }
-  try{
-    await api('/posts', {method:'POST', body: JSON.stringify({
-      author_id: state.user.id, content, visibility
-    })});
+
+  if (!content) {
+    showToast('Escribe algo', 'error');
+    return;
+  }
+
+  try {
+    await api('/posts', {
+      method: 'POST',
+      body: JSON.stringify({
+        author_id: state.user.id,
+        content,
+        visibility
+      })
+    });
+
+    contentEl.value = ''; // limpia el textarea
     closePostModal();
-    showToast('Publicado','success');
-    renderFeed(); // refresca Home
-    if (!$('#page-posts').hidden) renderPosts(); // <- refresca Mis Posts si estoy ahí
-  }catch(e){ showToast(e.message,'error'); }
+    showToast('Publicado', 'success');
+    console.log('Post submitted, refreshing feed and own posts');
+
+
+    // Solo recargar el feed y la sección de "Mis Posts"
+    renderFeed(false); // refresca Home
+
+    if (!$('#page-posts').hidden) {
+      const list = $('#myPostsFeedList');
+      if (list) list.innerHTML = ''; // limpia la lista
+      await loadPosts(true); // recarga "Mis Posts"
+    }
+
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
 });
 
 
-function drawPostCard(p, targetEl){
+
+
+function drawPostCard(p, targetEl) {
+  const existing = document.getElementById(`post-${p.id}`);
+  if (existing) {
+    console.warn(`❌ Post ${p.id} ya existe, no se dibuja otra vez.`);
+    return;
+  }
+
   const card = document.createElement('div');
+  card.id = `post-${p.id}`;
   card.className = 'card';
   card.innerHTML = `
     <div style="display:flex; gap:10px; align-items:flex-start">
@@ -257,7 +304,22 @@ async function loadComments(postId){
   }catch(e){ showToast?.(e.message,'error'); }
 }
 
-function renderPosts(){ postsPage=1; loadPosts(true); }
+function renderPosts() {
+  console.log('🔁 renderPosts triggered');
+
+  // Esperar al DOM para asegurar que el elemento exista
+  const el = $('#myPostsFeedList');
+  if (!el) {
+    console.warn('⚠️ myPostsFeedList no encontrado, reintentando en 100ms...');
+    return setTimeout(renderPosts, 100); // volver a intentar pronto
+  }
+
+  el.innerHTML = ''; // limpia siempre
+  loadPosts(true);
+}
+
+
+
 
 // ---- Switch entre Login y Signup ----
 function setAuthView(view){ // 'login' | 'signup'
@@ -279,7 +341,7 @@ setAuthView('login');
 // home version 3 que incluye recomendaciones, ranking y feedPage
 async function renderHome(){
   if(!state.user) return;
-  await Promise.all([renderRecommendations(), renderRanking(), renderFeed()]);
+  await Promise.all([renderRecommendations(), renderRanking(), renderFeed(false)]);
 }
 
 
@@ -442,15 +504,23 @@ function formatTs(ts){ try{ return new Date(ts).toLocaleString(); }catch{ return
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
 
 async function renderFeed(loadMore = false) {
-  const list = $('#feedList'); 
-  if (!list || feedLoading) return;
-  feedLoading = true;
+  console.log('renderFeed triggered, loadMore=', loadMore);
+  if (feedRendering) return;  
+  feedRendering = true;
+
+  const list = $('#feedList');
+  if (!list) {
+    feedRendering = false;
+    return;
+  }
 
   if (!loadMore) {
     feedPage = 1;
     list.innerHTML = '';
     renderedIds.clear();
   }
+  console.log('🧼 Limpieza: innerHTML y renderedIds.clear() ejecutado');
+
 
   // quita “Cargar más” previo
   const oldMore = $('#feedMoreBtn');
@@ -468,6 +538,8 @@ async function renderFeed(loadMore = false) {
     const frag = document.createDocumentFragment();
 
     items.forEach(p => {
+      console.log('👉 Procesando post id:', p.id);
+
       if (renderedIds.has(p.id)) return;
       renderedIds.add(p.id);
 
@@ -529,6 +601,7 @@ async function renderFeed(loadMore = false) {
     showToast?.(e.message, 'error');
   } finally {
     feedLoading = false;
+    feedRendering = false;
   }
 }
 
@@ -636,19 +709,47 @@ const closePostModal = ()=>{ postModal.classList.remove('open'); postModal.setAt
 $('#post-cancel')?.addEventListener('click', closePostModal);
 postModal?.addEventListener('click', (e)=>{ if(e.target.id==='postModal') closePostModal(); });
 
-$('#post-submit')?.addEventListener('click', async ()=>{
-  const content = $('#post-content').value.trim();
-  const visibility = $('#post-visibility').value;
-  if(!content){ showToast('Escribe algo','error'); return; }
-  try{
-    await api('/posts', {method:'POST', body: JSON.stringify({
-      author_id: state.user.id, content, visibility
-    })});
-    closePostModal();
-    showToast('Publicado','success');
-    renderFeed(); // refresca
-  }catch(e){ showToast(e.message,'error'); }
-});
+const postBtn = $('#post-submit');
+if (postBtn) {
+  postBtn.replaceWith(postBtn.cloneNode(true));  // limpia eventos previos
+  $('#post-submit').addEventListener('click', async () => {
+    const contentEl = $('#post-content');
+    const content = contentEl.value.trim();
+    const visibility = $('#post-visibility').value;
+
+    if (!content) {
+      showToast('Escribe algo', 'error');
+      return;
+    }
+
+    try {
+      await api('/posts', {
+        method: 'POST',
+        body: JSON.stringify({
+          author_id: state.user.id,
+          content,
+          visibility,
+        }),
+      });
+
+      contentEl.value = '';
+      closePostModal();
+      showToast('Publicado', 'success');
+      console.log('Post submitted, refreshing feed and own posts');
+
+      renderFeed(false);
+
+      if (!$('#page-posts').hidden) {
+        const list = $('#myPostsFeedList');
+        if (list) list.innerHTML = '';
+        await loadPosts(true);
+      }
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  });
+}
+
 
 /********* Integración con tabs **********/
 function showHomeIfNeeded(page){
