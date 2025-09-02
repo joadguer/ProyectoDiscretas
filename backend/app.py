@@ -290,7 +290,7 @@ class CommentIn(BaseModel):
 class CommentOut(BaseModel):
     id: int
     content: str
-    created_at: str
+    created_at: datetime.datetime
     username: str
 
 # por si decido agregarle reacciones
