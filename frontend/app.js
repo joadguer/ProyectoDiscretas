@@ -279,7 +279,7 @@ async function loadFeed(clear=false){
     const list = res.items || [];
     const box = $('#feedList'); if(!box) return;
     if(clear) box.innerHTML = '';
-    list.forEach(p => drawPostCard(p, box));  // <- aquí
+    list.forEach(p => drawPostCard(p, box));  // <- aquí (no agrego can delete para evitar que en el feed se borren los posts)
     if(list.length===0 && clear){ box.innerHTML='<div class="muted">Sin publicaciones aún.</div>'; }
     feedPage++;
   }catch(e){ showToast?.(e.message,'error'); }
@@ -288,32 +288,42 @@ async function loadFeed(clear=false){
 $('#feed-more')?.addEventListener('click', ()=> loadFeed(false));
 let loadingPosts = false;
 async function loadPosts(clear=false){
-  if (loadingPosts) {
-    console.warn('Ya se está cargando. Cancelado.');
-    return;
-  }
-  console.log('Ejecutando loadPosts, clear=', clear);
+  if (loadingPosts) return;
   loadingPosts = true;
   try{
     const res = await api(`/posts/by_user?author_id=${state.user.id}&viewer_id=${state.user.id}&require_owner=1&page=1&page_size=10`);
     const list = res.items || [];
     const box = $('#myPostsFeedList'); if(!box) return;
     if(clear) box.innerHTML = '';
-    list.forEach(p => drawPostCard(p, box));  // <- aquí
+    list.forEach(p => drawPostCard(p, box, { canDelete: true })); // ⬅️ aquí
     if(list.length===0 && clear){ box.innerHTML='<div class="muted">Sin publicaciones aún.</div>'; }
   } catch(e) {
     showToast?.(e.message, 'error');
   } finally {
     loadingPosts = false;
   }
-
 }
 
+
 $('#myPostsFeedList')?.addEventListener('click', async (e) => {
+  const delBtn = e.target.closest('[data-del]');
   const likeBtn = e.target.closest('[data-like]');
   const cmtBtn  = e.target.closest('[data-cmt]');
   const sendBtn = e.target.closest('[data-sendc]');
-  if (!likeBtn && !cmtBtn && !sendBtn) return;
+
+  if (delBtn) {
+    const postId = Number(delBtn.dataset.del);
+    const ok = confirm('¿Eliminar esta publicación?');
+    if (!ok) return;
+    try {
+      await api(`/posts/${postId}?user_id=${state.user.id}`, { method: 'DELETE' });
+      document.getElementById(`post-${postId}`)?.remove();
+      showToast?.('Publicación eliminada','info');
+    } catch (err) {
+      showToast?.(err.message, 'error');
+    }
+    return;
+  }
 
   if (likeBtn) {
     const postId = Number(likeBtn.dataset.like);
@@ -396,12 +406,52 @@ $('#post-submit')?.addEventListener('click', async () => {
 
 
 
-function drawPostCard(p, targetEl) {
+// function drawPostCard(p, targetEl) {
+//   const existing = document.getElementById(`post-${p.id}`);
+//   if (existing) {
+//     console.warn(`❌ Post ${p.id} ya existe, no se dibuja otra vez.`);
+//     return;
+//   }
+
+//   const card = document.createElement('div');
+//   card.id = `post-${p.id}`;
+//   card.className = 'card';
+//   card.innerHTML = `
+//     <div style="display:flex; gap:10px; align-items:flex-start">
+//       <div class="avatar" style="width:40px;height:40px;border-radius:10px"></div>
+//       <div style="flex:1">
+//         <div style="font-weight:700">@${p.username}</div>
+//         <div class="muted" style="font-size:.9rem">${new Date(p.created_at).toLocaleString()}</div>
+//         <div style="margin-top:6px; white-space:pre-wrap">${p.content}</div>
+//         <div style="display:flex; gap:8px; align-items:center; margin-top:8px">
+//           <button class="btn" data-like="${p.id}">❤️ ${p.likes ?? 0}</button>
+//           <button class="btn ghost" data-cmt="${p.id}">💬 ${p.comments ?? 0}</button>
+//         </div>
+//         <div id="cbox-${p.id}" style="display:none; margin-top:8px">
+//           <div style="display:flex; gap:6px">
+//             <input id="cinput-${p.id}" class="input" placeholder="Escribe un comentario..." />
+//             <button class="btn" data-sendc="${p.id}">Enviar</button>
+//           </div>
+//           <div id="clist-${p.id}" style="margin-top:6px"></div>
+//         </div>
+//       </div>
+//     </div>
+//   `;
+//   targetEl.appendChild(card);
+// }
+
+/* postcard */
+// ⬇️ reemplaza la firma de la función
+function drawPostCard(p, targetEl, opts = {}) {
+  const { canDelete = false } = opts;
+
   const existing = document.getElementById(`post-${p.id}`);
-  if (existing) {
-    console.warn(`❌ Post ${p.id} ya existe, no se dibuja otra vez.`);
-    return;
-  }
+  if (existing) return;
+
+  const isMine =
+    canDelete ||
+    p.author_id === state.user?.id ||
+    (p.username && p.username === state.user?.username);
 
   const card = document.createElement('div');
   card.id = `post-${p.id}`;
@@ -410,13 +460,21 @@ function drawPostCard(p, targetEl) {
     <div style="display:flex; gap:10px; align-items:flex-start">
       <div class="avatar" style="width:40px;height:40px;border-radius:10px"></div>
       <div style="flex:1">
-        <div style="font-weight:700">@${p.username}</div>
-        <div class="muted" style="font-size:.9rem">${new Date(p.created_at).toLocaleString()}</div>
+        <div style="display:flex; align-items:center; gap:8px; justify-content:space-between;">
+          <div>
+            <div style="font-weight:700">@${p.username}</div>
+            <div class="muted" style="font-size:.9rem">${new Date(p.created_at).toLocaleString()}</div>
+          </div>
+          ${isMine ? `<button class="btn ghost" data-del="${p.id}">Eliminar</button>` : ''}
+        </div>
+
         <div style="margin-top:6px; white-space:pre-wrap">${p.content}</div>
+
         <div style="display:flex; gap:8px; align-items:center; margin-top:8px">
           <button class="btn" data-like="${p.id}">❤️ ${p.likes ?? 0}</button>
           <button class="btn ghost" data-cmt="${p.id}">💬 ${p.comments ?? 0}</button>
         </div>
+
         <div id="cbox-${p.id}" style="display:none; margin-top:8px">
           <div style="display:flex; gap:6px">
             <input id="cinput-${p.id}" class="input" placeholder="Escribe un comentario..." />
