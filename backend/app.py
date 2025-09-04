@@ -10,6 +10,7 @@ from typing import Optional, Literal,  List, Dict
 from enum import Enum
 import mysql.connector
 from mysql.connector import pooling
+import json
 
 
 # --- Config ---
