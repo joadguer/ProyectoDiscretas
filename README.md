@@ -8,5 +8,5 @@ Para correr la aplicación necesitas tener instalado **Docker** y **Docker Compo
 docker compose up
 ```
 
-Para ver la app solo hay que ingresar al http://localhost:8000
-que es el backend porque actualmente el frontend esta desactivdado
+Para ver la app solo hay que ingresar al http://localhost:5500
+
