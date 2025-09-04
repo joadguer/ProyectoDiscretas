@@ -625,9 +625,11 @@ body {
   grid-auto-flow:column;
   grid-auto-columns: minmax(220px, 300px);
   gap:12px;
-  overflow-x:auto;
-  scroll-snap-type:x mandatory;
+  overflow: hidden;
+  /* overflow-x:auto;
+  scroll-snap-type:x mandatory; */
   padding-bottom:6px;
+
 }
 .h-carousel::-webkit-scrollbar{ height:10px }
 .h-carousel > .rec-card{
@@ -739,4 +741,29 @@ body {
   .view-body {
     grid-template-columns: 1fr;
   }
+}
+
+#recCarousel {
+  display: flex;
+  gap: 12px;              /* espacio entre tarjetas */
+  /* overflow-x: auto;       habilita scroll horizontal */
+  /* scroll-behavior: smooth;animación de scroll */
+  padding: 10px;
+}
+
+.rec-card {
+  flex: 0 0 auto;         /* evita que se encojan */
+  width: 180px;           /* ancho fijo de cada tarjeta */
+}
+
+.h-carousel > .rec-card {
+  flex: 0 0 calc(33.333% - 8px); /* 👈 3 tarjetas visibles máximo */
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

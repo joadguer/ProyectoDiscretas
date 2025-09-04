@@ -540,7 +540,69 @@ setAuthView('login');
 // home version 3 que incluye recomendaciones, ranking y feedPage
 async function renderHome(){
   if(!state.user) return;
-  await Promise.all([renderRecommendations(), renderRanking(), renderFeed(false)]);
+  await Promise.all([renderRecommendations(), enableRecCarousel(), renderRanking(), renderFeed(false)]);
+}
+
+function enableRecCarousel() {
+  const vp = document.getElementById('recCarousel');
+  if (!vp) return;
+
+  const slides = Array.from(vp.querySelectorAll('.rec-card'));
+  if (slides.length <= 3) return; // no hace falta carrusel
+
+  const host = vp.closest('.card');
+  if (host && getComputedStyle(host).position === 'static') {
+    host.style.position = 'relative';
+  }
+
+  // Crear flechas
+  const prev = document.createElement('button');
+  prev.textContent = '‹';
+  const next = document.createElement('button');
+  next.textContent = '›';
+
+  [prev, next].forEach((btn, i) => {
+    Object.assign(btn.style, {
+      position: 'absolute',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      [i === 0 ? 'left' : 'right']: '8px',
+      zIndex: '5',
+      width: '40px',
+      height: '40px',
+      borderRadius: '12px',
+      border: '1px solid var(--border)',
+      background: 'var(--bg-soft)',
+      color: 'var(--text)',
+      boxShadow: 'var(--shadow)',
+      cursor: 'pointer',
+      display: 'grid',
+      placeItems: 'center',
+      fontSize: '20px',
+      lineHeight: '1'
+    });
+    host.appendChild(btn);
+  });
+
+  let index = 0;
+  const pageSize = 3;
+
+  function showPage(i) {
+    index = Math.max(0, Math.min(slides.length - pageSize, i));
+    slides.forEach(c => (c.style.display = 'none'));
+    slides.slice(index, index + pageSize).forEach(c => (c.style.display = 'flex'));
+    updateArrows();
+  }
+
+  function updateArrows() {
+    prev.disabled = index <= 0;
+    next.disabled = index >= slides.length - pageSize;
+  }
+
+  prev.onclick = () => showPage(index - pageSize);
+  next.onclick = () => showPage(index + pageSize);
+
+  showPage(0); // inicializa mostrando los primeros 3
 }
 
 
@@ -625,7 +687,7 @@ async function renderRecommendations() {
         }
     });
     wrap.appendChild(frag);
-
+    enableRecCarousel();
   } catch (e) {
     wrap.innerHTML = `<div class="muted">No hay sugerencias ahora.</div>`;
     console.error('[recs] error:', e);
@@ -690,6 +752,7 @@ async function renderRanking() {
     rankLoading = false;
   }
 }
+
 
 
 
