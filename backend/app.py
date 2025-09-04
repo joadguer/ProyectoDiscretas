@@ -196,12 +196,21 @@ def public_user_detail(username: str):
 
         # días cumplidos (últimos 7)
         cur.execute("""
-            SELECT COALESCE(SUM(CASE WHEN l.value=1 THEN 1 ELSE 0 END),0) AS done_days
-            FROM habits h
-            LEFT JOIN logs l ON l.habit_id=h.id AND l.day BETWEEN %s AND %s
-            WHERE h.user_id=%s
+            SELECT COALESCE(MAX(days_done), 0) AS done_days
+            FROM (
+                SELECT h.id,
+                    SUM(CASE WHEN l.value = 1 THEN 1 ELSE 0 END) AS days_done
+                FROM habits h
+                LEFT JOIN logs l 
+                    ON l.habit_id = h.id 
+                    AND l.day BETWEEN %s AND %s
+                WHERE h.user_id = %s
+                GROUP BY h.id
+            ) t
         """, (start, today, user_id))
+
         done_days = cur.fetchone()["done_days"]
+
 
     return {
         "user": {"id": user_id, "username": row["username"], "bio": row["bio"]},
