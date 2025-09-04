@@ -111,9 +111,7 @@ def public_users(
 
     return {"page": page, "page_size": page_size, "total": total, "items": items}
 
-@app.get("/stats/weekly")
 
-def stats_weekly(user_id: int = Query(...)):
 
     today = datetime.date.today()
 
