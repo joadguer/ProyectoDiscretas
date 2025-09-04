@@ -11,7 +11,7 @@ services:
       MYSQL_USER: habitos_user
       MYSQL_PASSWORD: habitos_pass
     ports:
-      - "3406:3306"             # externo 3406, interno 3306 (evita conflictos)
+      - "3406:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -40,7 +40,6 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-      - ./frontend:/frontend   # <-- Montar el código del frontend
     command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:

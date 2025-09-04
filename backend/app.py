@@ -1068,4 +1068,4 @@ def stats_weekly(user_id: int = Query(...)):
     return {"today": today.isoformat(), "items": items}
 
 # --- Servir frontend estático ---
-app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="static")
+# app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="static")
