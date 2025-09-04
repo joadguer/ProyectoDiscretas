@@ -230,16 +230,25 @@ def public_rank(
         cur = con.cursor(dictionary=True)
         cur.execute("""
             SELECT u.id, u.username,
-                   COALESCE(SUM(CASE WHEN l.value=1 THEN 1 ELSE 0 END), 0) AS done_days
+                COALESCE(MAX(habit_done.done_days), 0) AS done_days
             FROM users u
             JOIN profiles p ON p.user_id = u.id AND p.is_public = 1
-            LEFT JOIN habits h ON h.user_id = u.id
-            LEFT JOIN logs l   ON l.habit_id = h.id
-                              AND l.day BETWEEN %s AND %s
+            LEFT JOIN (
+                SELECT h.user_id,
+                    h.id AS habit_id,
+                    COUNT(*) AS done_days
+                FROM habits h
+                LEFT JOIN logs l
+                    ON l.habit_id = h.id
+                    AND l.value = 1
+                    AND l.day BETWEEN %s AND %s
+                GROUP BY h.user_id, h.id
+            ) habit_done ON habit_done.user_id = u.id
             GROUP BY u.id, u.username
             ORDER BY done_days DESC, u.username ASC
             LIMIT %s OFFSET %s
         """, (start, today, page_size, offset))
+
         items = cur.fetchall()
 
         cur.execute("SELECT COUNT(*) AS total_public FROM profiles WHERE is_public=1")
